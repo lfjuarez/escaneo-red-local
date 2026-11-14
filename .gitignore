@@ -1,0 +1,6 @@
+# Archivos que crea el programa con los datos de tu red: no se suben
+inventario-activos.csv
+alertas-red.log
+__pycache__/
+*.pyc
+.DS_Store
