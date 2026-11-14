@@ -20,7 +20,122 @@ En esta página, botón verde **Code › Download ZIP**. Descomprimí el archivo
 - **Windows:** abrí la carpeta, hacé clic en la barra de dirección de arriba, escribí `powershell` y presioná Enter.
 - **Linux:** clic derecho en la carpeta › «Abrir en una terminal».
 
-## 2. Cómo se usa
+## 2. Explorar la red a mano, comando por comando
+
+Antes de usar los programas conviene hacerlo a mano, para entender qué hacen por dentro.
+El objetivo: tomar una IP de tu red y averiguar qué equipo es.
+
+Los ejemplos usan datos **inventados**: una red `192.168.0.x` con un televisor Samsung en la `192.168.0.7`.
+En tu red las IP, las MAC y los nombres van a ser otros.
+
+### Paso 1 · Quién está en mi red
+
+```bash
+arp -a
+```
+
+Muestra los equipos de tu red con los que tu computadora habló hace poco: cada renglón es un equipo, con su IP y su MAC.
+
+```
+? (192.168.0.1) at a4:2b:b0:12:34:56 on en0 ifscope [ethernet]
+? (192.168.0.7) at 94:e6:ba:ab:cd:ef on en0 ifscope [ethernet]
+? (192.168.0.9) at fe:7f:34:11:22:33 on en0 ifscope [ethernet]
+```
+
+Elegimos uno para investigar: la `192.168.0.7`, con MAC `94:e6:ba:ab:cd:ef`.
+Si aparecen renglones `(incomplete)` (direcciones donde no contestó nadie), se ocultan con `arp -a | grep -v incomplete`.
+
+### Paso 2 · De qué marca es
+
+```bash
+curl https://api.macvendors.com/94:e6:ba
+```
+
+Los **primeros 3 números de la MAC** dicen quién fabricó la placa de red. Este comando se los pregunta a un servicio público.
+
+```
+Samsung Electronics Co.,Ltd
+```
+
+Si la MAC es privada (celulares y compus que la ocultan), contesta `Locally Administered Address`: no se puede saber la marca.
+También se puede buscar en el navegador, en https://macvendors.com.
+
+### Paso 3 · Qué es exactamente (Mac)
+
+```bash
+dns-sd -Z _googlecast._tcp local.
+```
+
+Le pregunta a la red qué equipos reciben video por Chromecast. Esperá 3 segundos y cortalo con **Control + C**.
+Cada equipo aparece en tres renglones:
+
+```
+_googlecast._tcp        PTR   TV-del-living-a1b2c3._googlecast._tcp
+TV-del-living-a1b2c3…   SRV   0 0 8009 a1b2c3d4-0000-1111-2222-333344445555.local.
+TV-del-living-a1b2c3…   TXT   "fn=TV del living" "md=QN55Q60" ...
+```
+
+- **SRV**: su nombre de red, el que termina en `.local` (lo usamos en el paso 4).
+- **TXT**: su ficha. `fn=` es el nombre y `md=` el modelo.
+
+Para Mac, Apple TV y televisores con AirPlay: `dns-sd -Z _airplay._tcp local.` (ahí el modelo aparece como `model=`).
+En Linux, el equivalente es `avahi-browse -art` (paquete `avahi-utils`).
+
+### Paso 4 · Confirmar que es la misma IP
+
+```bash
+ping -c 1 a1b2c3d4-0000-1111-2222-333344445555.local
+```
+
+Le hace ping al nombre `.local` del paso 3. En la primera línea, entre paréntesis, aparece su IP:
+
+```
+PING a1b2c3d4-0000-1111-2222-333344445555.local (192.168.0.7): 56 data bytes
+64 bytes from 192.168.0.7: icmp_seq=0 ttl=64 time=5.1 ms
+```
+
+Es la `192.168.0.7`, la misma del paso 1. **Conclusión: esa IP es un televisor Samsung, modelo QN55Q60.**
+De paso, `ttl=64` es una pista del sistema: 64 suele ser Linux, Android o Apple; 128, Windows.
+
+> En Windows: `arp -a` y `curl` funcionan igual; el ping es `ping -n 1 IP`. Windows no trae `dns-sd`, así que el paso 3 no se puede hacer sin instalar nada.
+
+## 3. Monitorear a mano
+
+La idea de monitorear es simple: anotar qué hay hoy y comparar con lo que hay después.
+
+**Guardar una foto de la red:**
+
+```bash
+arp -a | grep -v incomplete > antes.txt
+```
+
+**Más tarde, otra foto, y compararlas:**
+
+```bash
+arp -a | grep -v incomplete > ahora.txt
+```
+
+```bash
+diff antes.txt ahora.txt
+```
+
+`diff` muestra solo lo que cambió. Un renglón con `>` es algo que **apareció** (por ejemplo, un equipo nuevo); con `<`, algo que **ya no está**. Si no muestra nada, no cambió nada.
+
+```
+> ? (192.168.0.23) at 2a:04:f6:aa:bb:cc on en0 ifscope [ethernet]
+```
+
+**Mirar la red cada 30 segundos** (cortar con Control + C):
+
+```bash
+while true; do date; arp -a | grep -v incomplete; sleep 30; done
+```
+
+Esto funciona, pero a mano no escala: en una empresa hay cientos o miles de equipos. Para eso están los programas de este repositorio.
+
+## 4. Automatizarlo: los programas
+
+### Cómo se usan
 
 | Paso | Qué hace | Mac y Linux | Windows (PowerShell) |
 |---|---|---|---|
@@ -37,7 +152,7 @@ Opciones:
 
 En Windows, `-ExecutionPolicy Bypass` permite correr el archivo solo esa vez; no cambia la configuración de Windows.
 
-## 3. Ejemplo de lo que vas a ver
+### Ejemplo de lo que vas a ver
 
 Datos inventados, para que te ubiques:
 
@@ -84,7 +199,7 @@ FICHA DE 192.168.0.7
   Tipo           TV o reproductor          deducido de su modelo y sus servicios
 ```
 
-## 4. Qué significa cada columna (y cómo se obtiene)
+## 5. Qué significa cada columna (y cómo se obtiene)
 
 | Columna | Qué es | De dónde sale | Probalo a mano |
 |---|---|---|---|
@@ -101,7 +216,7 @@ FICHA DE 192.168.0.7
 Windows no trae una herramienta para leer los anuncios de los equipos (mDNS), así que ahí faltan las columnas **Modelo** y **Servicios**.
 En Linux, para verlas hace falta `avahi-utils` (`sudo apt install avahi-utils`).
 
-## 5. Conceptos que aparecen
+## 6. Conceptos que aparecen
 
 **Tabla ARP.** Cuando tu computadora quiere hablarle a otro equipo de la red, pregunta a todos «¿quién tiene la 192.168.0.7?» y el dueño contesta con su MAC. La respuesta queda anotada un rato en la tabla ARP. Por eso esa tabla solo muestra los equipos con los que tu computadora habló hace poco, no todo lo que está conectado.
 
@@ -117,7 +232,7 @@ En Linux, para verlas hace falta `avahi-utils` (`sudo apt install avahi-utils`).
 
 **ARP spoofing.** Un ataque de la red local: el atacante le dice a los demás equipos «yo soy el router» para que todo el tráfico pase por él (man in the middle). Por eso `vigilar-red` avisa si la MAC del router cambia, o si otro equipo usa la misma MAC que el router.
 
-## 6. Qué avisa la vigilancia
+## 7. Qué avisa la vigilancia
 
 - **Alerta:** un equipo que no está en el inventario, o que está pero no autorizado.
 - **Alerta:** señales de ARP spoofing: la MAC del router cambió, o un equipo usa la misma MAC que el router.
@@ -128,7 +243,7 @@ Las alertas también quedan escritas en `alertas-red.log`, como las recibiría u
 
 **Para practicar:** abrí `inventario-activos.csv`, borrá el renglón de un equipo (por ejemplo, tu celular) y corré `vigilar-red`. Ese equipo va a aparecer como «no está en el inventario».
 
-## 7. Archivos
+## 8. Archivos
 
 | Archivo | Para qué |
 |---|---|
@@ -142,7 +257,7 @@ Las alertas también quedan escritas en `alertas-red.log`, como las recibiría u
 
 En Mac, la primera vez que corras `python3` puede aparecer un aviso para instalar las herramientas de línea de comandos de Apple: aceptalo.
 
-## 8. Límites
+## 9. Límites
 
 - Sin `--barrido` solo se ven los equipos con los que tu computadora habló hace poco.
 - Un celular bloqueado no responde al ping y puede no decir su nombre: un solo escaneo no es un inventario completo. En una empresa, el inventario se mantiene de forma continua.
