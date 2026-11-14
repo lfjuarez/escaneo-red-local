@@ -1,8 +1,20 @@
-﻿# Escaneo inicial de la red local (Windows).
+﻿# escanear-red.ps1 — escaneo inicial de la red local (Windows)
+# =============================================================
 #
-# Descubre los equipos de la red donde se corre y muestra una tabla con IP, MAC, fabricante, nombre,
-# tipo de equipo, sistema estimado y latencia.
-# El resultado se guarda en inventario-activos.csv: es el inventario contra el que después compara vigilar-red.ps1.
+# ¿Para qué sirve?
+#   Para saber qué hay conectado a una red: cada equipo con su IP, MAC, fabricante, nombre, tipo,
+#   sistema estimado y latencia. Es lo primero que hace un analista al llegar a una red (y también un
+#   atacante: se llama reconocimiento, MITRE ATT&CK T1018).
+#
+# ¿Qué deja guardado?
+#   inventario-activos.csv: el «inventario de activos» (CIS Control 1). Se abre con Excel.
+#   En la columna «Autorizado» se marca «sí» para cada equipo que se reconoce. Después, vigilar-red.ps1
+#   compara la red contra esa lista y avisa si aparece algo raro.
+#
+# Ejemplo de lo que muestra (datos inventados):
+#   IP           MAC                Fabricante  Nombre         Tipo              Sistema                 Latencia
+#   192.168.0.1  a4:2b:b0:xx:xx:xx  TP-Link                    Router            Linux, Android o Apple  3 ms
+#   192.168.0.9  fe:7f:34:xx:xx:xx  privada                    Celular o compu                           no responde
 #
 # Usalo solo en tu red o con autorización.
 #
@@ -15,7 +27,7 @@
 
 param([switch]$Barrido, [switch]$Aprobar, [switch]$MacCompleta)
 
-. (Join-Path $PSScriptRoot 'RedLocal.ps1')
+. (Join-Path $PSScriptRoot 'RedLocal.ps1')     # carga el motor: ahí está cómo se obtiene cada dato
 
 Write-Host 'Relevando la red...'
 $relevamiento = Relevar-Red $Barrido.IsPresent

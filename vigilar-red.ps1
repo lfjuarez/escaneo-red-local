@@ -1,6 +1,13 @@
-﻿# Vigilancia de la red local contra el inventario de activos (Windows).
+﻿# vigilar-red.ps1 — vigilancia de la red local contra el inventario de activos (Windows)
+# =====================================================================================
 #
-# Compara lo que hay conectado ahora con inventario-activos.csv (lo crea escanear-red.ps1) y avisa:
+# Una vez que hay un inventario (lo crea escanear-red.ps1), este programa mira la red y la compara con
+# esa lista. Es lo que hace un equipo de seguridad todo el tiempo: detectar lo que no debería estar.
+#
+# Cómo provocar una alerta para practicar: abrí inventario-activos.csv, borrá el renglón de un equipo
+# (por ejemplo, tu celular) y corré este programa. Ese equipo va a aparecer como «no está en el inventario».
+#
+# Compara lo que hay conectado ahora con inventario-activos.csv y avisa:
 #   ALERTA    un equipo que no está en el inventario o que no está autorizado
 #   ALERTA    señales de ARP spoofing: la MAC del router cambió, o un equipo usa la misma MAC que el router
 #   CAMBIO    un equipo autorizado cambió de IP
@@ -18,7 +25,7 @@
 
 param([switch]$Barrido, [int]$Cada = 0, [switch]$MacCompleta)
 
-. (Join-Path $PSScriptRoot 'RedLocal.ps1')
+. (Join-Path $PSScriptRoot 'RedLocal.ps1')     # carga el motor: ahí está cómo se obtiene cada dato
 
 function Agregar-Columna($base, [string]$columna, $valor) {
     $fila = [ordered]@{}
@@ -29,6 +36,13 @@ function Agregar-Columna($base, [string]$columna, $valor) {
 
 function Comparar-ConInventario($inventario, $equipos, $datosRed, [bool]$macCompleta) {
     # Cruza los equipos conectados con el inventario y devuelve la lista de hallazgos.
+    # Para cada equipo conectado se pregunta, en este orden:
+    #   1. ¿Es el router y cambió su MAC?            → ALERTA (posible ARP spoofing: alguien se hace pasar por el router)
+    #   2. ¿Usa la misma MAC que el router?          → ALERTA (posible ARP spoofing)
+    #   3. ¿No está en el inventario?                → ALERTA
+    #   4. ¿Está pero no autorizado?                 → ALERTA
+    #   5. Si está todo bien: ¿cambió de IP?         → CAMBIO
+    # Al final, los equipos autorizados que no aparecieron → AUSENTE
     $hallazgos = @()
     $vistos = @{}
     $routers = @($inventario.Values | Where-Object { $_.Tipo -eq 'Router' -and (Probar-Autorizado $_) } | ForEach-Object { $_.MAC })
@@ -131,6 +145,8 @@ if ($alertas.Count) { Write-Host "$resumen · alertas guardadas en alertas-red.l
 
 if ($Cada -le 0) { if ($alertas.Count) { exit 2 } else { exit 0 } }
 
+# Vigilancia continua: se repite la revisión cada N segundos y solo se informa lo que CAMBIA
+# (una alerta nueva, un equipo que volvió, uno que se fue). Así funciona un monitoreo real.
 Write-Host "`nVigilancia continua: una revisión cada $Cada segundos. Control + C para cortar." -ForegroundColor White
 $estado = @{}
 foreach ($h in $hallazgos) { if ($h.Nivel -in 'ALERTA', 'OK') { $estado[$h.Clave] = $h } }

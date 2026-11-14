@@ -1,7 +1,18 @@
-﻿# Motor compartido de escanear-red.ps1 y vigilar-red.ps1 (Windows).
+﻿# RedLocal.ps1 — el «motor» que usan escanear-red.ps1 y vigilar-red.ps1 (Windows).
+# ====================================================================================
 #
-# Releva la red local con lo que trae Windows y devuelve una lista de equipos.
+# Este archivo no se ejecuta solo: lo cargan los otros dos programas. Acá está todo el trabajo de
+# averiguar qué hay en la red. Es la misma idea que hacerlo a mano en PowerShell, pero automatizada:
+#
+#   1. ¿Dónde estoy?            Get-NetRoute, Get-NetIPAddress  → mi IP, mi red, mi router   (Leer-Red)
+#   2. ¿Con quién hablé?        Get-NetNeighbor (como arp -a)    → IP y MAC de los vecinos     (Leer-Vecinos)
+#   3. (Opcional) ¿Quién más?   un ping a cada dirección de la red                            (Relevar-Red -Barrido)
+#   4. ¿Responde? ¿Qué sistema? dos pings: latencia y TTL                                     (Enviar-Pings)
+#   5. ¿Cómo se llama?          consulta inversa de nombre (DNS, LLMNR o NetBIOS)             (Leer-Nombres)
+#   6. ¿De qué marca es?        los 3 primeros bytes de la MAC                                 (Obtener-Fabricante)
+#
 # Nada está fijo: la interfaz, la red y el router se descubren en el momento.
+# El barrido (paso 3) es descubrimiento activo: usalo solo en tu red o con autorización.
 #
 # Fuentes de cada dato:
 #   IP y MAC ............ tabla de vecinos (Get-NetNeighbor, lo mismo que arp -a)
@@ -21,6 +32,9 @@ $SistemaPorTtl = @{ 64 = 'Linux, Android o Apple'; 128 = 'Windows'; 255 = 'Equip
 # ───────────────────────── utilidades ─────────────────────────
 function Obtener-Ahora { Get-Date -Format 'dd/MM/yyyy HH:mm' }
 
+# Una IP es un número de 32 bits escrito en 4 partes. Para calcular la red y recorrer sus direcciones
+# conviene pasarla a número: 192.168.0.1 → 3232235521. Y al revés para mostrarla.
+
 function Convertir-IpANumero([string]$ip) {
     $bytes = [System.Net.IPAddress]::Parse($ip).GetAddressBytes()
     [Array]::Reverse($bytes)
@@ -33,6 +47,8 @@ function Convertir-NumeroAIp([uint32]$numero) {
     return ($bytes -join '.')
 }
 
+# True si la IP puede ser de un equipo. Descarta las especiales: 224 a 239 (multicast, avisos a un grupo),
+# 127.x (la propia computadora), 169.254.x (sin configuración) y las que terminan en .255 (difusión).
 function Probar-IpDeEquipo([string]$ip) {
     $partes = $ip.Split('.')
     if ($partes.Count -ne 4) { return $false }
@@ -41,16 +57,25 @@ function Probar-IpDeEquipo([string]$ip) {
 }
 
 function Probar-MacPrivada([string]$dirMac) {
-    # El bit «administrada localmente»: la MAC no es la de fábrica (celulares y compus que la ocultan).
+    # Los celulares y muchas computadoras inventan una MAC distinta para cada Wi-Fi, para que no los rastreen.
+    # Esas MAC tienen encendido el bit «administrada localmente», que se ve en el segundo carácter: 2, 6, A o E.
+    #   fe:7f:34:…  →  e  →  privada          94:e6:ba:…  →  4  →  de fábrica (Samsung)
     return [bool]($dirMac -and ([Convert]::ToInt32($dirMac.Substring(0, 2), 16) -band 2))
 }
 
+# Para proyectar en clase, la MAC se muestra tapada: a4:2b:b0:0c:08:60 → a4:2b:b0:xx:xx:xx
+# (los 3 primeros bytes, el fabricante, quedan a la vista).
 function Mostrar-Mac([string]$dirMac, [bool]$completa) {
     if ($completa -or -not $dirMac) { return $dirMac }
     return $dirMac.Substring(0, 8) + ':xx:xx:xx'
 }
 
 # ───────────────────────── datos de esta computadora y de la red ─────────────────────────
+# Averigua dónde está parada esta computadora. Se puede probar a mano en PowerShell:
+#   Get-NetRoute -DestinationPrefix 0.0.0.0/0    → la puerta de enlace (el router), por ejemplo 192.168.0.1
+#   Get-NetIPAddress -AddressFamily IPv4          → la IP y el prefijo, por ejemplo 192.168.0.15 /24
+#   Get-DnsClientServerAddress                    → los servidores DNS
+#   netsh wlan show interfaces                    → la seguridad y el canal del Wi-Fi
 function Leer-Red {
     $datos = [ordered]@{ Interfaz = ''; Indice = $null; IP = ''; MAC = ''; Prefijo = 24; Red = ''; Direcciones = 0
                          Router = ''; DNS = @(); WiFi = ''; Equipo = ''; Sistema = '' }
@@ -95,6 +120,11 @@ function Obtener-DireccionesABarrer($datosRed) {
 
 function Enviar-Pings([string[]]$ips, [int]$veces) {
     # Manda los pings en paralelo y devuelve, por IP, la mejor respuesta: @{ Responde; Latencia; Ttl }.
+    # - Latencia: cuánto tarda en ir y volver (en una red de casa, pocos milisegundos).
+    # - TTL: un número que pone cada sistema en sus paquetes. En la red local llega el valor original:
+    #   64 sugiere Linux, Android o Apple; 128, Windows; 255, un equipo de red. Es una pista, no una prueba.
+    # Se mandan dos pings porque el primero muchas veces se pierde mientras el equipo se despierta.
+    # Un celular bloqueado suele no contestar: «no responde» no significa «no está».
     $tareas = foreach ($ip in $ips) {
         for ($n = 0; $n -lt $veces; $n++) {
             @{ IP = $ip; Tarea = (New-Object System.Net.NetworkInformation.Ping).SendPingAsync($ip, 1500) }
@@ -118,7 +148,9 @@ function Enviar-Pings([string[]]$ips, [int]$veces) {
 }
 
 function Leer-Vecinos($datosRed) {
-    # La tabla de vecinos: IP y MAC de los equipos con los que esta computadora habló hace poco.
+    # La tabla de vecinos (lo mismo que muestra «arp -a»): IP y MAC de los equipos con los que esta
+    # computadora habló hace poco. Cuando quiere hablar con otro equipo, pregunta a toda la red
+    # «¿quién tiene la 192.168.0.7?» y el dueño contesta con su MAC. La respuesta queda anotada un rato.
     $vecinos = @{}
     Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {
         $_.State -notin @('Unreachable', 'Incomplete') -and $_.LinkLayerAddress -and
@@ -128,6 +160,8 @@ function Leer-Vecinos($datosRed) {
     return $vecinos
 }
 
+# El nombre de cada IP («DNS inverso»): de 192.168.0.7 a «Living-TV». Windows lo busca en el DNS,
+# y si no, preguntándole a la red por LLMNR o NetBIOS. Muchos equipos no contestan: queda «?».
 function Leer-Nombres([string[]]$ips) {
     $tareas = foreach ($ip in $ips) { @{ IP = $ip; Tarea = [System.Net.Dns]::GetHostEntryAsync($ip) } }
     $nombres = @{}
@@ -138,6 +172,10 @@ function Leer-Nombres([string[]]$ips) {
 }
 
 # ───────────────────────── fabricantes ─────────────────────────
+# Cada fabricante de placas de red compra a la IEEE un bloque de direcciones: los 3 primeros bytes de la MAC
+# dicen quién fabricó la placa. Renglón de ejemplo de fabricantes-mac.txt:
+#   94:E6:BA    SamsungElect    Samsung Electronics Co.,Ltd
+# Ojo: es el fabricante de la PLACA, no siempre la marca del aparato.
 $script:Fabricantes = $null
 function Obtener-Fabricante([string]$dirMac) {
     if (-not $dirMac) { return '' }
@@ -157,6 +195,11 @@ function Obtener-Fabricante([string]$dirMac) {
 }
 
 # ───────────────────────── relevamiento ─────────────────────────
+# Hace todos los pasos y devuelve la red y la lista de equipos ordenada por IP.
+# Con -Barrido, primero saluda a todas las direcciones de la red: no importa si contestan el ping,
+# para mandarlo Windows tiene que preguntar la MAC, y cada equipo encendido contesta esa pregunta.
+# Desde el lado del defensor, un equipo que pregunta por todas las direcciones en pocos segundos
+# es un comportamiento típico de reconocimiento, y muchos sistemas de detección lo marcan.
 function Relevar-Red([bool]$barrido) {
     $datosRed = Leer-Red
     if ($barrido) { [void](Enviar-Pings (Obtener-DireccionesABarrer $datosRed) 1) }   # deja a los equipos encendidos en la tabla de vecinos
@@ -250,6 +293,9 @@ function Obtener-Metodo([bool]$barrido, $datosRed) {
 }
 
 # ───────────────────────── inventario de activos ─────────────────────────
+# ───────── El inventario es la lista oficial de lo que DEBERÍA estar en la red (CIS Control 1) ─────────
+# Se guarda en inventario-activos.csv, que se abre con Excel. «Autorizado» y «Responsable» las completa
+# una persona: el programa nunca las pisa.
 function Leer-Inventario {
     # El inventario guardado, por clave. La clave es la MAC.
     $inventario = [ordered]@{}

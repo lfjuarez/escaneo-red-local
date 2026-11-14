@@ -1,20 +1,37 @@
 #!/usr/bin/env python3
-"""Vigilancia de la red local contra el inventario de activos (Mac y Linux).
+"""
+vigilar-red.py — vigilancia de la red local contra el inventario de activos (Mac y Linux)
+=========================================================================================
 
-Compara lo que hay conectado ahora con inventario-activos.csv (lo crea escanear-red.py) y avisa:
-  ALERTA    un equipo que no está en el inventario o que no está autorizado
-  ALERTA    señales de ARP spoofing: la MAC del router cambió, o un equipo usa la misma MAC que el router
-  CAMBIO    un equipo autorizado cambió de IP, de nombre o anuncia un servicio nuevo
-  AUSENTE   un equipo autorizado que ahora no se ve
-Las alertas también se guardan en alertas-red.log, como las recibiría un SIEM.
-Termina con código 2 si hubo alertas, para poder usarlo en una tarea programada.
+¿Para qué sirve?
+    Una vez que hay un inventario (lo crea escanear-red.py), este programa mira la red y la compara con esa
+    lista. Es lo que hace un equipo de seguridad todo el tiempo: detectar lo que no debería estar.
+
+¿Qué avisa?
+    ALERTA    un equipo que no está en el inventario, o que está pero nadie lo autorizó.
+              Ejemplo: alguien conectó un dispositivo propio a la red de la empresa.
+    ALERTA    señales de ARP spoofing (el ataque «man in the middle» en la red local):
+              - la MAC del router cambió (alguien se hace pasar por el router), o
+              - otro equipo usa la misma MAC que el router.
+    CAMBIO    un equipo autorizado cambió de IP, de nombre o anuncia un servicio nuevo.
+              Ejemplo: una impresora que de golpe ofrece «SSH :22» merece una mirada.
+    AUSENTE   un equipo autorizado que ahora no se ve (apagado, o desconectado).
+
+    Las alertas también quedan escritas en alertas-red.log, una por renglón, como las recibiría un SIEM:
+        2026-11-14T17:08:37   ALERTA   no está en el inventario   192.168.0.23   fe:7f:34:7a:aa:d2   (nombre)
+    El programa termina con código 2 si hubo alertas (0 si no), para poder usarlo en una tarea programada.
+
+Cómo se usa (en la terminal, parado en esta carpeta):
+    python3 vigilar-red.py               una revisión pasiva (tabla ARP + anuncios)
+    python3 vigilar-red.py --barrido     además saluda a todas las direcciones de la red (activo, más completo)
+    python3 vigilar-red.py --cada 30     vigilancia continua: revisa cada 30 segundos y avisa solo lo que cambia
+    python3 vigilar-red.py --mac         muestra las MAC completas (por defecto van tapadas para proyectar)
+
+Cómo provocar una alerta para practicar:
+    abrí inventario-activos.csv, borrá el renglón de un equipo (por ejemplo, tu celular) y corré este programa.
+    Ese equipo va a aparecer como «no está en el inventario».
 
 Usalo solo en tu red o con autorización.
-
-  python3 vigilar-red.py               una revisión pasiva (tabla ARP + anuncios)
-  python3 vigilar-red.py --barrido     además saluda a todas las direcciones de la red (activo, más completo)
-  python3 vigilar-red.py --cada 30     vigilancia continua: revisa cada 30 segundos, con barrido, y avisa lo que cambia
-  python3 vigilar-red.py --mac         muestra las MAC completas (por defecto van tapadas para proyectar)
 """
 import argparse
 import sys
@@ -28,6 +45,7 @@ import red_local as rl
 
 @dataclass
 class Hallazgo:
+    """Algo que se encontró al comparar la red con el inventario. Cada hallazgo es una fila del informe."""
     nivel: str     # ALERTA, CAMBIO, OK o AUSENTE
     clave: str     # identifica el hallazgo entre una revisión y la siguiente
     fila: dict     # lo que se muestra
@@ -35,10 +53,22 @@ class Hallazgo:
 
 
 def comparar(inventario, equipos, red, fabricantes, mac_completa, con_anuncios):
-    """Cruza los equipos conectados con el inventario y devuelve la lista de hallazgos."""
+    """Cruza los equipos conectados con el inventario y devuelve la lista de hallazgos.
+
+    Para cada equipo conectado se pregunta, en este orden:
+      1. ¿Es el router y cambió su MAC?                  → ALERTA (posible ARP spoofing)
+      2. ¿Usa la misma MAC que el router?                → ALERTA (posible ARP spoofing)
+      3. ¿No está en el inventario?                      → ALERTA
+      4. ¿Está pero no autorizado?                       → ALERTA
+      5. Si está todo bien: ¿cambió algo desde la última vez?  → CAMBIO
+    Al final, los equipos autorizados que no aparecieron    → AUSENTE
+    """
     hallazgos = []
     vistos = set()
+    # La MAC que el inventario dice que tiene el router. Si mañana el router responde con otra MAC,
+    # puede ser un cambio de router… o alguien haciéndose pasar por él (ARP spoofing).
     routers = {f["MAC"] for f in inventario.values() if f["Tipo"] == "Router" and rl.autorizado(f)}
+    # Qué IP usa cada MAC: una MAC repetida en varias IP es una señal para mirar.
     ips_por_mac = defaultdict(list)
     for e in equipos:
         if e.mac:
@@ -90,6 +120,7 @@ def comparar(inventario, equipos, red, fabricantes, mac_completa, con_anuncios):
 
 
 def registrar_alertas(hallazgos):
+    """Agrega las alertas al final de alertas-red.log: fecha, nivel, motivo, IP, MAC completa y nombre, separados por tabulación."""
     with rl.REGISTRO.open("a", encoding="utf-8") as registro:
         for h in hallazgos:
             f = h.fila
@@ -97,6 +128,7 @@ def registrar_alertas(hallazgos):
 
 
 def informe(hallazgos):
+    """Imprime los hallazgos agrupados: primero las alertas (en rojo), después cambios, en regla y ausentes."""
     secciones = (("ALERTA", "ALERTAS", rl.ROJO), ("CAMBIO", "CAMBIOS", rl.AMARILLO),
                  ("OK", "EN REGLA", rl.VERDE), ("AUSENTE", "AUSENTES", rl.GRIS))
     for nivel, titulo, color in secciones:
@@ -108,6 +140,10 @@ def informe(hallazgos):
 
 
 def revisar(inventario, fabricantes, args, completo):
+    """Releva la red (con el motor) y la compara con el inventario.
+
+    completo=False se usa en la vigilancia continua: no escucha anuncios, para que cada vuelta sea rápida.
+    """
     red, equipos = rl.relevar(barrido=args.barrido or bool(args.cada), anuncios=completo, avisar=rl.progreso if completo else (lambda t: None))
     rl.fin_progreso()
     return red, equipos, comparar(inventario, equipos, red, fabricantes, args.mac, completo)
@@ -140,6 +176,10 @@ def main():
 
     if not args.cada:
         sys.exit(2 if alertas else 0)
+
+    # Vigilancia continua: se repite la revisión cada N segundos y solo se informa lo que CAMBIA
+    # (una alerta nueva, un equipo que volvió, uno que se fue). Así funciona un monitoreo real:
+    # no repite lo mismo cada vez, avisa las novedades.
 
     print(rl.pintar(f"\nVigilancia continua: una revisión cada {args.cada} segundos. Control + C para cortar.", rl.NEGRITA))
     estado = {h.clave: h for h in hallazgos if h.nivel in ("ALERTA", "OK")}
