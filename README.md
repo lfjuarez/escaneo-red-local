@@ -28,6 +28,7 @@ En esta página, botón verde **Code › Download ZIP**. Descomprimí el archivo
 | 2 | Aprobar el inventario (o editar la columna «Autorizado» a mano) | `python3 escanear-red.py --aprobar` | `powershell -ExecutionPolicy Bypass -File .\escanear-red.ps1 -Aprobar` |
 | 3 | Vigilar: compara la red con el inventario y avisa | `python3 vigilar-red.py` | `powershell -ExecutionPolicy Bypass -File .\vigilar-red.ps1` |
 | 4 | Vigilancia continua, una revisión cada 30 segundos | `python3 vigilar-red.py --cada 30` | `powershell -ExecutionPolicy Bypass -File .\vigilar-red.ps1 -Cada 30` |
+| — | La ficha de un equipo puntual, a partir de su IP | `python3 quien-es.py 192.168.0.7` | (solo Mac y Linux) |
 
 Opciones:
 
@@ -65,6 +66,22 @@ IP            MAC                Fabricante  Nombre  Tipo             Motivo
 192.168.0.23  2a:04:f6:xx:xx:xx  privada             Celular o compu  no está en el inventario
 
 Resultado: alertas: 1 · cambios: 0 · en regla: 5 · ausentes: 0 · alertas guardadas en alertas-red.log
+```
+
+### De una IP a la ficha del equipo
+
+`quien-es.py` muestra todo lo que se puede averiguar de una IP, y al lado de cada dato, el comando del que salió:
+
+```
+FICHA DE 192.168.0.7
+  MAC            94:e6:ba:xx:xx:xx         arp -an | grep "(192.168.0.7)"
+  Fabricante     Samsung                   primeros 3 bytes de la MAC (94:e6:ba) en fabricantes-mac.txt
+  Responde       sí · 5 ms                 ping -c 2 192.168.0.7
+  Sistema        Linux, Android o Apple    el TTL de esa respuesta (64)
+  Nombre         TV del living             lo que el equipo anuncia por mDNS
+  Modelo         Samsung QN55              la ficha de su anuncio (manufacturer, model)
+  Servicios      AirPlay :7000, Chromecast :8009
+  Tipo           TV o reproductor          deducido de su modelo y sus servicios
 ```
 
 ## 4. Qué significa cada columna (y cómo se obtiene)
@@ -116,7 +133,8 @@ Las alertas también quedan escritas en `alertas-red.log`, como las recibiría u
 | Archivo | Para qué |
 |---|---|
 | `escanear-red.py`, `vigilar-red.py` | Los programas para Mac y Linux (Python 3.8 o más nuevo) |
-| `red_local.py` | El motor que usan los dos: ahí está, comentado paso a paso, cómo se obtiene cada dato |
+| `quien-es.py` | De una IP a la ficha del equipo, con el comando del que sale cada dato (Mac y Linux) |
+| `red_local.py` | El motor que usan los tres: ahí está, comentado paso a paso, cómo se obtiene cada dato |
 | `escanear-red.ps1`, `vigilar-red.ps1` | Los programas para Windows (PowerShell 5.1, el que trae Windows, o 7) |
 | `RedLocal.ps1` | El motor de la versión de Windows |
 | `fabricantes-mac.txt` | La base de fabricantes por MAC. Tiene que estar junto a los programas |
