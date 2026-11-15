@@ -77,12 +77,13 @@ Para los comandos sueltos **no hace falta descargar nada**: vienen con el sistem
 
 Menú de inicio, escribí `powershell` y abrí **Windows PowerShell**. Todos los comandos de esta sección funcionan ahí,
 y también los programas de la sección 3.4. No hace falta instalar nada.
+Si usás el Símbolo del sistema (cmd) en lugar de PowerShell, cambiá `Select-String "din|dyn"` por `findstr /i "din dyn"`: en PowerShell, `findstr` rompe los acentos.
 
 ### 3.2 Explorar la red a mano
 
 | Mac | Windows |
 |---|---|
-| `arp -a` | `arp -a \| findstr /i "din dyn"` |
+| `arp -a` | `arp -a \| Select-String "din\|dyn"` |
 | `curl` a macvendors | `curl.exe` a macvendors |
 | `dns-sd -Z` (lo que anuncian los equipos por mDNS) | `UPnP.UPnPDeviceFinder` (lo que anuncian por UPnP) |
 | `ping NOMBRE.local` | `Resolve-DnsName IP` y `ping NOMBRE.local` |
@@ -91,10 +92,10 @@ y también los programas de la sección 3.4. No hace falta instalar nada.
 **Paso 1 · Cuál es mi IP y cuál es el router** (solo mira la configuración)
 
 ```powershell
-ipconfig | findstr /i "IPv4 puerta gateway"
+ipconfig | Select-String "IPv4|puerta|gateway"
 ```
 
-`ipconfig` muestra la configuración de red; `findstr` deja solo los renglones que importan
+`ipconfig` muestra la configuración de red; `Select-String` deja solo los renglones que importan
 («puerta» es para Windows en español y «gateway», para Windows en inglés).
 
 ```
@@ -108,11 +109,11 @@ Si aparece otra IPv4 con la puerta de enlace vacía, es una placa de red virtual
 **Paso 2 · Quién está en mi red** (solo mira)
 
 ```powershell
-arp -a | findstr /i "din dyn"
+arp -a | Select-String "din|dyn"
 ```
 
 `arp -a` muestra la **tabla ARP**: los equipos de tu red con los que tu computadora habló hace poco, cada uno con su IP y su MAC.
-`findstr` deja solo los **dinámicos**, que son equipos reales («dinámico» en Windows en español, «dynamic» en inglés).
+`Select-String` deja solo los **dinámicos**, que son equipos reales («dinámico» en Windows en español, «dynamic» en inglés).
 Los **estáticos** que se ven con `arp -a` solo no son equipos: son direcciones especiales de la red (la que termina en 255 y las que empiezan con 224 o 239).
 
 ```
@@ -228,13 +229,13 @@ La idea de monitorear es simple: anotar qué hay hoy y comparar con lo que hay d
 **Guardar una foto de la red:**
 
 ```powershell
-arp -a | findstr /i "din dyn" > antes.txt
+arp -a | Select-String "din|dyn" > antes.txt
 ```
 
 **Más tarde, otra foto:**
 
 ```powershell
-arp -a | findstr /i "din dyn" > ahora.txt
+arp -a | Select-String "din|dyn" > ahora.txt
 ```
 
 **Compararlas:**
@@ -254,7 +255,7 @@ InputObject                                              SideIndicator
 **Mirar la red cada 30 segundos** (se corta con Control + C):
 
 ```powershell
-while ($true) { Get-Date; arp -a | findstr /i "din dyn"; Start-Sleep 30 }
+while ($true) { Get-Date; arp -a | Select-String "din|dyn"; Start-Sleep 30 }
 ```
 
 Esto funciona, pero a mano no escala. Para eso están los programas.
