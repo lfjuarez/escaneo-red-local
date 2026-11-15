@@ -73,6 +73,10 @@ Para los comandos sueltos **no hace falta descargar nada**: vienen con el sistem
 
 ## 3. Windows
 
+**Videos paso a paso (grabados en Windows 11, sin instalar nada):**
+- [¿Qué hay en tu Wi-Fi? Los comandos a mano](https://youtu.be/Mt7j98wjvVQ) (2:44): secciones 3.2 y 3.3.
+- [Tu red a fondo con un programa](https://youtu.be/3S51acOCR0Y) (1:53): descargar el repositorio, escanear, la ficha de un equipo y la vigilancia (sección 3.4).
+
 ### 3.1 Abrir la terminal
 
 Menú de inicio, escribí `powershell` y abrí **Windows PowerShell**. Todos los comandos de esta sección funcionan ahí,
