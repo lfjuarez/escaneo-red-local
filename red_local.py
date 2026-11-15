@@ -550,7 +550,7 @@ def _nombre_presentable(instancia):
     «TV del living» → se queda.   «a1b2c3d4e5f6a7b8c9d0e1f2» → se descarta.   «com.empresa.servicio» → se descarta.
     """
     nombre = re.sub(r"^[0-9A-Fa-f]{12}@", "", instancia).strip()     # AirPlay audio antepone la MAC: «A1B2C3D4E5F6@TV»
-    if re.fullmatch(r"[0-9a-fA-F-]{20,}", nombre) or re.match(r"[0-9a-fA-F:]{17}@", nombre) or re.fullmatch(r"[a-z]{2,}(\.[\w-]+){2,}", nombre):
+    if re.fullmatch(r"[0-9a-fA-F-]{16,}", nombre) or re.match(r"[0-9a-fA-F:]{17}@", nombre) or re.fullmatch(r"[a-z]{2,}(\.[\w-]+){2,}", nombre):
         return ""
     return nombre
 
@@ -561,7 +561,8 @@ def _tipo_de(equipo, red):
     1. Es esta computadora o el router (se sabe por la configuración de red).
     2. El modelo que anuncia («Mac15,3» → computadora Apple; «iPhone15,2» → iPhone).
     3. Los servicios que anuncia (impresión → impresora; Chromecast → TV).
-    4. Si solo se sabe que tiene MAC privada, probablemente sea un celular o una computadora.
+    4. El fabricante de la placa, para equipos inteligentes (WiZ → lámpara; Tuya → dispositivo inteligente).
+    5. Si solo se sabe que tiene MAC privada, probablemente sea un celular o una computadora.
     """
     if equipo.ip == red.ip:
         return "Esta computadora"
@@ -575,7 +576,26 @@ def _tipo_de(equipo, red):
                         ("domotica", "Domótica"), ("apple", "Equipo Apple")):
         if clase in equipo.clases:
             return tipo
+    # 4. El fabricante de la placa, para equipos inteligentes que casi nunca anuncian nada.
+    fabricante = fabricante_de(equipo, _tabla_fabricantes()).lower()
+    for marca, tipo in TIPO_POR_FABRICANTE:
+        if marca in fabricante:
+            return tipo
     return "Celular o computadora" if equipo.mac_privada else ""
+
+
+# Equipos inteligentes que se reconocen por el fabricante de su placa de red (ejemplos frecuentes en casas).
+TIPO_POR_FABRICANTE = (("wiz", "Lámpara inteligente"), ("signify", "Lámpara inteligente"), ("philips lighting", "Lámpara inteligente"),
+                       ("tuya", "Dispositivo inteligente"), ("espressif", "Dispositivo inteligente"),
+                       ("hikvision", "Cámara"), ("dahua", "Cámara"), ("ezviz", "Cámara"), ("ring", "Cámara o timbre"))
+_TABLA = None
+
+
+def _tabla_fabricantes():
+    global _TABLA
+    if _TABLA is None:
+        _TABLA = cargar_fabricantes()
+    return _TABLA
 
 
 # ───────────────────────── paso 8 · juntar todo ─────────────────────────

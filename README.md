@@ -128,7 +128,7 @@ curl https://api.macvendors.com/94-e6-ba
 ```
 
 Los **primeros 3 pares de la MAC** dicen quién fabricó la placa de red. Este comando se los pregunta a un servicio público
-(`curl` viene con Windows 10 y 11). Escribilo en el **Símbolo del sistema**: en PowerShell 5.1, `curl` es otro comando y muestra otra cosa.
+(`curl` viene con Windows 10 y 11). Escribilo en el **Símbolo del sistema**. En PowerShell hay que escribir `curl.exe`, porque `curl` a secas es otro comando.
 
 ```
 Samsung Electronics Co.,Ltd
@@ -216,7 +216,7 @@ Desde PowerShell, parado en la carpeta descomprimida:
 - `-ExecutionPolicy Bypass` permite correr el archivo **solo esa vez**; no cambia la configuración de Windows.
 - `-MacCompleta` muestra las MAC completas. Por defecto van tapadas, para poder proyectar la pantalla.
 - Funcionan con el PowerShell que trae Windows (5.1) y con PowerShell 7. No hace falta instalar nada.
-- En el escaneo de Windows no aparecen las columnas **Modelo** y **Servicios**. Para verlas de un equipo puntual, usá `quien-es.ps1`, que consulta los anuncios mDNS por su cuenta (envía la pregunta a 224.0.0.251, puerto 5353, y lee las respuestas).
+- Windows no trae `dns-sd`, así que los programas consultan los anuncios mDNS por su cuenta (envían la pregunta a 224.0.0.251, puerto 5353, y leen las respuestas). Por eso el escaneo también muestra **Tipo**, **Modelo** y **Servicios**: por ejemplo, «TV o reproductor · Samsung DU7000 · Chromecast :8009».
 
 ---
 
@@ -528,7 +528,7 @@ Para que aparezcan las columnas **Modelo** y **Servicios** hace falta `avahi-uti
 
 ## 6. Qué muestran los programas
 
-Lo mismo en los tres sistemas (en Windows, sin Modelo ni Servicios). Datos inventados:
+Lo mismo en los tres sistemas. Datos inventados:
 
 ```
 ESCANEO DE LA RED · 14/11/2026 17:30

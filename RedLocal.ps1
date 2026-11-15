@@ -10,6 +10,7 @@
 #   4. ¿Responde? ¿Qué sistema? dos pings: latencia y TTL                                     (Enviar-Pings)
 #   5. ¿Cómo se llama?          consulta inversa de nombre (DNS, LLMNR o NetBIOS)             (Leer-Nombres)
 #   6. ¿De qué marca es?        los 3 primeros bytes de la MAC                                 (Obtener-Fabricante)
+#   7. ¿Qué es y qué modelo?    lo que el equipo anuncia por mDNS (consulta propia)            (Leer-Anuncios)
 #
 # Nada está fijo: la interfaz, la red y el router se descubren en el momento.
 # El barrido (paso 3) es descubrimiento activo: usalo solo en tu red o con autorización.
@@ -194,6 +195,186 @@ function Obtener-Fabricante([string]$dirMac) {
     return ($nombre -replace '[,\s]+(Co\.?|Ltd\.?|Inc\.?|Corp\.?|Corporation|Technologies|Technology|Electronics|International)\b.*$', '').Trim(' ,')
 }
 
+# ───────────────────────── anuncios de los equipos (mDNS) ─────────────────────────
+# En Mac existe el comando dns-sd y en Linux avahi-browse, que escuchan lo que los equipos anuncian
+# de sí mismos (mDNS, el «DNS multicast»). Windows no trae ninguno, así que acá se hace a mano.
+
+# Los tipos de servicio que más se ven en una red de casa u oficina, con un nombre en castellano
+# y la clase de equipo que suelen indicar.
+$Servicios = [ordered]@{
+    '_googlecast._tcp'      = @('Chromecast', 'TV o reproductor')
+    '_airplay._tcp'         = @('AirPlay', 'TV o reproductor')
+    '_raop._tcp'            = @('AirPlay audio', 'Parlante')
+    '_spotify-connect._tcp' = @('Spotify Connect', 'Parlante')
+    '_ipp._tcp'             = @('Impresión', 'Impresora')
+    '_printer._tcp'         = @('Impresión', 'Impresora')
+    '_pdl-datastream._tcp'  = @('Impresión', 'Impresora')
+    '_scanner._tcp'         = @('Escáner', 'Impresora')
+    '_hap._tcp'             = @('HomeKit', 'Domótica')
+    '_matter._tcp'          = @('Matter', 'Domótica')
+    '_companion-link._tcp'  = @('Apple', 'Equipo de Apple')
+    '_smb._tcp'             = @('Archivos SMB', 'Computadora')
+    '_ssh._tcp'             = @('SSH', 'Computadora')
+    '_http._tcp'            = @('Web', '')
+}
+
+# ───────────────────────── mDNS hecho a mano ─────────────────────────
+# Un mensaje DNS tiene un encabezado de 12 bytes y después las preguntas. Cada nombre se escribe por
+# partes: «_googlecast._tcp.local» → 11 _googlecast 4 _tcp 5 local 0.
+function Nuevo-Consulta([string[]]$nombres, [int]$tipo) {
+    $bytes = New-Object System.Collections.Generic.List[byte]
+    $bytes.AddRange([byte[]](0, 0, 0, 0, 0, [byte]$nombres.Count, 0, 0, 0, 0, 0, 0))
+    foreach ($nombre in $nombres) {
+        foreach ($parte in $nombre.Split('.')) {
+            $b = [Text.Encoding]::UTF8.GetBytes($parte); $bytes.Add([byte]$b.Length); $bytes.AddRange($b)
+        }
+        $bytes.Add(0)
+        $bytes.AddRange([byte[]](0, [byte]$tipo, 0x80, 1))   # tipo; clase IN con el bit «respondeme a mí» (QU)
+    }
+    return $bytes.ToArray()
+}
+
+# Lee un nombre dentro de una respuesta. Los nombres pueden estar «comprimidos»: en vez de repetirlos,
+# la respuesta apunta a donde ya aparecieron (dos bytes que empiezan con 11 en binario).
+function Leer-NombreDns([byte[]]$d, [int]$pos) {
+    $partes = @(); $saltos = 0; $fin = -1
+    while ($pos -lt $d.Length) {
+        $largo = $d[$pos]
+        if ($largo -eq 0) { $pos++; break }
+        if (($largo -band 0xC0) -eq 0xC0) {
+            if ($fin -lt 0) { $fin = $pos + 2 }
+            $pos = (($largo -band 0x3F) -shl 8) + $d[$pos + 1]; $saltos++
+            if ($saltos -gt 20) { break }
+            continue
+        }
+        $partes += [Text.Encoding]::UTF8.GetString($d, $pos + 1, $largo); $pos += $largo + 1
+    }
+    if ($fin -lt 0) { $fin = $pos }
+    return @(($partes -join '.'), $fin)
+}
+
+# Lee todos los registros de una respuesta: PTR (qué instancias hay), SRV (nombre de red y puerto),
+# TXT (la ficha: fn=, md=, model=…) y A (la IP del nombre .local).
+function Leer-Registros([byte[]]$d) {
+    $registros = @()
+    try {
+        $preguntas = $d[4] * 256 + $d[5]
+        $total = ($d[6] * 256 + $d[7]) + ($d[8] * 256 + $d[9]) + ($d[10] * 256 + $d[11])
+        $pos = 12
+        for ($i = 0; $i -lt $preguntas; $i++) { $pos = (Leer-NombreDns $d $pos)[1] + 4 }
+        for ($i = 0; $i -lt $total; $i++) {
+            $r = Leer-NombreDns $d $pos; $nombre = $r[0]; $pos = $r[1]
+            $tipo = $d[$pos] * 256 + $d[$pos + 1]; $largo = $d[$pos + 8] * 256 + $d[$pos + 9]; $datos = $pos + 10
+            $valor = $null
+            switch ($tipo) {
+                1  { $valor = '{0}.{1}.{2}.{3}' -f $d[$datos], $d[$datos + 1], $d[$datos + 2], $d[$datos + 3] }
+                12 { $valor = (Leer-NombreDns $d $datos)[0] }
+                33 { $valor = @{ Puerto = $d[$datos + 4] * 256 + $d[$datos + 5]; Destino = (Leer-NombreDns $d ($datos + 6))[0] } }
+                16 {
+                    $txt = @{}; $p = $datos
+                    while ($p -lt $datos + $largo) {
+                        $l = $d[$p]; if ($l -gt 0) {
+                            $par = [Text.Encoding]::UTF8.GetString($d, $p + 1, $l); $k = $par.IndexOf('=')
+                            if ($k -gt 0) { $txt[$par.Substring(0, $k).ToLower()] = $par.Substring($k + 1) }
+                        }
+                        $p += $l + 1
+                    }
+                    $valor = $txt
+                }
+            }
+            $registros += [PSCustomObject]@{ Nombre = $nombre; Tipo = $tipo; Valor = $valor }
+            $pos = $datos + $largo
+        }
+    } catch { }
+    return $registros
+}
+
+# Envía las preguntas a 224.0.0.251:5353 y junta todas las respuestas durante unos segundos.
+# Como el pedido sale desde un puerto que no es el 5353, los equipos contestan directo a esta computadora.
+# Además se pregunta directo a cada IP: el firewall de Windows deja pasar la respuesta de un equipo
+# al que se le preguntó, y así no se pierden respuestas.
+function Escuchar-Anuncios([string[]]$ips, [int]$segundos = 4) {
+    $udp = New-Object System.Net.Sockets.UdpClient(0)
+    $udp.Client.ReceiveTimeout = 400
+    $multicast = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Parse('224.0.0.251'), 5353)
+    $consultas = @($Servicios.Keys | ForEach-Object { , (Nuevo-Consulta @("$_.local") 12) })
+    foreach ($ip in $ips) {                                  # «¿quién es la 192.168.0.7?» (DNS inverso por mDNS)
+        $partes = $ip.Split('.'); [Array]::Reverse($partes)
+        $consultas += , (Nuevo-Consulta @((($partes -join '.') + '.in-addr.arpa')) 12)
+    }
+    $registros = @()
+    for ($vuelta = 0; $vuelta -lt 2; $vuelta++) {           # dos vueltas: algunos equipos no contestan la primera
+        foreach ($c in $consultas) {
+            [void]$udp.Send($c, $c.Length, $multicast)
+            foreach ($ip in $ips) { [void]$udp.Send($c, $c.Length, (New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Parse($ip), 5353))) }
+        }
+        $limite = (Get-Date).AddSeconds($segundos / 2)
+        while ((Get-Date) -lt $limite) {
+            try {
+                $origen = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
+                $datos = $udp.Receive([ref]$origen)
+                $registros += Leer-Registros $datos | ForEach-Object { $_ | Add-Member -NotePropertyName Origen -NotePropertyValue $origen.Address.ToString() -PassThru }
+            } catch { }
+        }
+    }
+    $udp.Close()
+    return $registros
+}
+
+# Ordena lo que se escuchó por IP: nombre, marca, modelo, servicios (con su puerto) y clase de equipo.
+function Leer-Anuncios([string[]]$ips) {
+    $resultado = @{}
+    if (-not $ips) { return $resultado }
+    $registros = @(Escuchar-Anuncios $ips)
+    foreach ($ip in $ips) {
+        $locales = @($registros | Where-Object { $_.Tipo -eq 1 -and $_.Valor -eq $ip } | ForEach-Object { $_.Nombre })
+        $partes = $ip.Split('.'); [Array]::Reverse($partes); $inverso = ($partes -join '.') + '.in-addr.arpa'
+        $locales += @($registros | Where-Object { $_.Tipo -eq 12 -and $_.Nombre -eq $inverso } | ForEach-Object { $_.Valor })
+        $instancias = @($registros | Where-Object { $_.Tipo -eq 33 -and ($_.Origen -eq $ip -or $locales -contains $_.Valor.Destino) })
+        $info = @{ Nombres = @(); Marca = ''; Modelo = ''; Servicios = [ordered]@{}; Clases = @(); NombreRed = '' }
+        foreach ($inst in $instancias) {
+            $tipoServicio = ($Servicios.Keys | Where-Object { $inst.Nombre -like "*.$_.local" } | Select-Object -First 1)
+            if ($tipoServicio) { $info.Servicios[$Servicios[$tipoServicio][0]] = $inst.Valor.Puerto; $info.Clases += $Servicios[$tipoServicio][1] }
+            $locales += $inst.Valor.Destino
+            $txt = ($registros | Where-Object { $_.Tipo -eq 16 -and $_.Nombre -eq $inst.Nombre } | Select-Object -First 1).Valor
+            $legible = if ($txt -and $txt['fn']) { $txt['fn'] } else { ($inst.Nombre -split '\._')[0] }
+            if ($legible -match '@') { $legible = $legible.Split('@')[-1] }            # AirPlay audio: «MAC@nombre»
+            if ($legible -match '^[0-9a-fA-F-]{16,}$') { $legible = '' }             # identificadores sin nombre legible
+            if ($legible -and $info.Nombres -notcontains $legible) { $info.Nombres += $legible }
+            if ($txt) {
+                if (-not $info.Modelo) { $info.Modelo = @($txt['md'], $txt['model'], $txt['ty'], $txt['usb_mdl']) | Where-Object { $_ } | Select-Object -First 1 }
+                if (-not $info.Marca) { $info.Marca = @($txt['manufacturer'], $txt['usb_mfg']) | Where-Object { $_ } | Select-Object -First 1 }
+            }
+        }
+        $info.NombreRed = ($locales | Where-Object { $_ } | Select-Object -First 1)
+        $resultado[$ip] = $info
+    }
+    return $resultado
+}
+
+# Equipos inteligentes que casi nunca anuncian nada: se reconocen por el fabricante de su placa de red.
+$TipoPorFabricante = [ordered]@{ 'wiz' = 'Lámpara inteligente'; 'signify' = 'Lámpara inteligente'; 'philips lighting' = 'Lámpara inteligente'
+    'tuya' = 'Dispositivo inteligente'; 'espressif' = 'Dispositivo inteligente'; 'hikvision' = 'Cámara'; 'dahua' = 'Cámara'; 'ezviz' = 'Cámara'; 'ring' = 'Cámara o timbre' }
+function Obtener-TipoPorFabricante([string]$dirMac) {
+    $fabricante = (Obtener-Fabricante $dirMac).ToLower()
+    foreach ($marca in $TipoPorFabricante.Keys) { if ($fabricante.Contains($marca)) { return $TipoPorFabricante[$marca] } }
+    return ''
+}
+
+# El tipo de equipo, deducido de su modelo y de los servicios que anuncia.
+function Obtener-TipoPorAnuncio($info) {
+    if (-not $info) { return '' }
+    switch -Regex ($info.Modelo) {
+        '^(Mac|MacBook|iMac)' { return 'Computadora (Mac)' }
+        '^iPhone' { return 'Celular (iPhone)' }
+        '^iPad' { return 'Tablet (iPad)' }
+        '^AppleTV' { return 'TV o reproductor' }
+    }
+    $clases = @($info.Clases | Where-Object { $_ })
+    if ($clases.Count) { return ($clases | Group-Object | Sort-Object Count -Descending | Select-Object -First 1).Name }
+    return ''
+}
+
 # ───────────────────────── relevamiento ─────────────────────────
 # Hace todos los pasos y devuelve la red y la lista de equipos ordenada por IP.
 # Con -Barrido, primero saluda a todas las direcciones de la red: no importa si contestan el ping,
@@ -216,19 +397,26 @@ function Relevar-Red([bool]$barrido) {
     $ips = @($vecinos.Keys)
     $sondeos = if ($ips.Count) { Enviar-Pings $ips 2 } else { @{} }
     $nombres = if ($ips.Count) { Leer-Nombres $ips } else { @{} }
+    $anuncios = if ($ips.Count) { Leer-Anuncios $ips } else { @{} }   # lo que cada equipo anuncia: nombre, modelo y servicios
 
     $equipos = foreach ($ip in $ips) {
         $dirMac = $vecinos[$ip]
         $sondeo = $sondeos[$ip]
-        $tipo = if ($ip -eq $datosRed.Router) { 'Router' } elseif (Probar-MacPrivada $dirMac) { 'Celular o computadora' } else { '' }
+        $info = $anuncios[$ip]
+        $tipoAnuncio = Obtener-TipoPorAnuncio $info
+        $tipoMarca = Obtener-TipoPorFabricante $dirMac
+        $tipo = if ($ip -eq $datosRed.Router) { 'Router' } elseif ($tipoAnuncio) { $tipoAnuncio } elseif ($tipoMarca) { $tipoMarca } elseif (Probar-MacPrivada $dirMac) { 'Celular o computadora' } else { '' }
+        $nombre = if ($info -and $info.Nombres) { $info.Nombres[0] } else { "$($nombres[$ip])" }
+        $modelo = if ($info) { ((@($info.Marca, $info.Modelo) | Where-Object { $_ }) -join ' ') } else { '' }
+        $servicios = if ($info) { ($info.Servicios.Keys | ForEach-Object { "$_ :$($info.Servicios[$_])" }) -join ', ' } else { '' }
         $sistema = if ($sondeo.Ttl) { if ($SistemaPorTtl[[int]$sondeo.Ttl]) { $SistemaPorTtl[[int]$sondeo.Ttl] } else { "poco común (TTL $($sondeo.Ttl))" } } else { '' }
-        [PSCustomObject]@{ IP = $ip; MAC = $dirMac; Nombre = "$($nombres[$ip])"; Tipo = $tipo; Modelo = ''; Sistema = $sistema
-                           Responde = $sondeo.Responde; Latencia = $sondeo.Latencia; Clave = $dirMac }
+        [PSCustomObject]@{ IP = $ip; MAC = $dirMac; Nombre = $nombre; Tipo = $tipo; Modelo = $modelo; Sistema = $sistema
+                           Responde = $sondeo.Responde; Latencia = $sondeo.Latencia; Clave = $dirMac; Servicios = $servicios }
     }
     $equipos = @($equipos)
     if ($datosRed.IP) {
         $equipos += [PSCustomObject]@{ IP = $datosRed.IP; MAC = $datosRed.MAC; Nombre = $env:COMPUTERNAME; Tipo = 'Esta computadora'
-                                       Modelo = $datosRed.Equipo; Sistema = $datosRed.Sistema; Responde = $true; Latencia = $null; Clave = $datosRed.MAC }
+                                       Modelo = $datosRed.Equipo; Sistema = $datosRed.Sistema; Responde = $true; Latencia = $null; Clave = $datosRed.MAC; Servicios = '' }
     }
     return [PSCustomObject]@{ Red = $datosRed; Equipos = @($equipos | Sort-Object { [version]$_.IP }) }
 }
@@ -242,6 +430,7 @@ function Convertir-AFila($equipo, [bool]$macCompleta) {
     return [PSCustomObject][ordered]@{
         IP = $equipo.IP; MAC = (Mostrar-Mac $equipo.MAC $macCompleta); Fabricante = (Obtener-Fabricante $equipo.MAC)
         Nombre = $nombre; Tipo = $equipo.Tipo; Modelo = $equipo.Modelo; Sistema = $equipo.Sistema; Latencia = $latencia
+        Servicios = $equipo.Servicios
     }
 }
 
