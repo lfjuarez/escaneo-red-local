@@ -4,7 +4,7 @@
 # ¿Para qué sirve?
 #   Para saber qué hay conectado a una red: cada equipo con su IP, MAC, fabricante, nombre, tipo,
 #   sistema estimado y latencia. Es lo primero que hace un analista al llegar a una red (y también un
-#   atacante: se llama reconocimiento, MITRE ATT&CK T1018).
+#   atacante: se llama descubrimiento, MITRE ATT&CK T1018).
 #
 # ¿Qué deja guardado?
 #   inventario-activos.csv: el «inventario de activos» (CIS Control 1). Se abre con Excel.
@@ -14,7 +14,7 @@
 # Ejemplo de lo que muestra (datos inventados):
 #   IP           MAC                Fabricante  Nombre         Tipo              Sistema                 Latencia
 #   192.168.0.1  a4:2b:b0:xx:xx:xx  TP-Link                    Router            Linux, Android o Apple  3 ms
-#   192.168.0.9  fe:7f:34:xx:xx:xx  privada                    Celular o compu                           no responde
+#   192.168.0.9  fe:7f:34:xx:xx:xx  privada                    Celular o computadora                           no responde
 #
 # Usalo solo en tu red o con autorización.
 #
@@ -59,7 +59,8 @@ if ($primeraVez) {
 }
 if ($pendientes) {
     Write-Host 'Siguiente paso: abrí el archivo y poné «sí» en la columna Autorizado de los equipos que reconocés,'
-    Write-Host 'o aprobá todos con  .\escanear-red.ps1 -Aprobar  · Después, vigilá la red con  .\vigilar-red.ps1'
+    Write-Host 'o aprobá todos con  powershell -ExecutionPolicy Bypass -File .\escanear-red.ps1 -Aprobar'
+    Write-Host 'Después, vigilá la red con  powershell -ExecutionPolicy Bypass -File .\vigilar-red.ps1'
 } else {
-    Write-Host 'Todo el inventario está autorizado. Vigilá la red con  .\vigilar-red.ps1'
+    Write-Host 'Todo el inventario está autorizado. Vigilá la red con  powershell -ExecutionPolicy Bypass -File .\vigilar-red.ps1'
 }

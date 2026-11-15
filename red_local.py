@@ -333,12 +333,12 @@ def direcciones_a_barrer(red):
 def barrer(red):
     """Descubrimiento ACTIVO: un ping a cada dirección de la red (lo mismo que hace «nmap -sn»).
 
-    No importa si contestan el ping: para mandarlo, la computadora primero tiene que preguntar la MAC
+    No importa si contestan el ping: para enviarlo, la computadora primero tiene que preguntar la MAC
     del destino, y cada equipo encendido contesta esa pregunta. Así todos quedan en la tabla ARP.
     Las direcciones donde no hay nadie quedan como «(incomplete)» un par de minutos.
 
     Desde el lado del defensor: un equipo que pregunta por todas las direcciones en pocos segundos es
-    un comportamiento típico de reconocimiento, y muchos sistemas de detección lo marcan como alerta.
+    un comportamiento típico de descubrimiento de la red, y muchos sistemas de detección lo marcan como alerta.
     """
     espera = ["-W", "1000"] if ES_MAC else ["-W", "1"]   # esperar como máximo 1 segundo cada respuesta
     en_paralelo(lambda ip: correr(["ping", "-c", "1", *espera, ip], 3), direcciones_a_barrer(red))
@@ -561,7 +561,7 @@ def _tipo_de(equipo, red):
     1. Es esta computadora o el router (se sabe por la configuración de red).
     2. El modelo que anuncia («Mac15,3» → computadora Apple; «iPhone15,2» → iPhone).
     3. Los servicios que anuncia (impresión → impresora; Chromecast → TV).
-    4. Si solo se sabe que tiene MAC privada, probablemente sea un celular o una compu.
+    4. Si solo se sabe que tiene MAC privada, probablemente sea un celular o una computadora.
     """
     if equipo.ip == red.ip:
         return "Esta computadora"
@@ -575,7 +575,7 @@ def _tipo_de(equipo, red):
                         ("domotica", "Domótica"), ("apple", "Equipo Apple")):
         if clase in equipo.clases:
             return tipo
-    return "Celular o compu" if equipo.mac_privada else ""
+    return "Celular o computadora" if equipo.mac_privada else ""
 
 
 # ───────────────────────── paso 8 · juntar todo ─────────────────────────
@@ -776,8 +776,8 @@ def registrar(inventario, equipos, fabricantes):
             "MAC": e.mac, "IP": e.ip,
             "Nombre": e.nombre or anterior.get("Nombre", ""),
             "Fabricante": fila["Fabricante"],
-            # «Celular o compu» sale solo de la MAC privada: no pisa un tipo mejor que ya se conocía.
-            "Tipo": anterior.get("Tipo", "") if e.tipo in ("", "Celular o compu") and anterior.get("Tipo") else e.tipo,
+            # «Celular o computadora» sale solo de la MAC privada: no pisa un tipo mejor que ya se conocía.
+            "Tipo": anterior.get("Tipo", "") if e.tipo in ("", "Celular o computadora") and anterior.get("Tipo") else e.tipo,
             "Modelo": fila["Modelo"] or anterior.get("Modelo", ""),
             "Sistema": e.sistema or anterior.get("Sistema", ""),
             "Servicios": ", ".join(sorted(servicios_de(anterior) | set(e.servicios))),

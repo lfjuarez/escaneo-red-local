@@ -6,7 +6,7 @@ escanear-red.py — escaneo inicial de la red local (Mac y Linux)
 ¿Para qué sirve?
     Para saber qué hay conectado a una red: cada equipo con su IP, MAC, fabricante, nombre, tipo,
     modelo, sistema estimado, latencia y los servicios que anuncia. Es lo primero que hace un analista
-    al llegar a una red (y también un atacante: se llama reconocimiento, MITRE ATT&CK T1018).
+    al llegar a una red (y también un atacante: se llama descubrimiento, MITRE ATT&CK T1018).
 
 ¿Qué deja guardado?
     inventario-activos.csv: la lista de equipos que hay ahora. Es el «inventario de activos» (CIS Control 1).
@@ -23,7 +23,7 @@ Ejemplo de lo que muestra (datos inventados):
     IP           MAC                Fabricante  Nombre         Tipo              Sistema                 Latencia  Servicios
     192.168.0.1  a4:2b:b0:xx:xx:xx  TP-Link     router         Router            Linux, Android o Apple  3 ms
     192.168.0.7  94:e6:ba:xx:xx:xx  Samsung     TV del living  TV o reproductor  Linux, Android o Apple  5 ms      AirPlay :7000
-    192.168.0.9  fe:7f:34:xx:xx:xx  privada                    Celular o compu                           no responde
+    192.168.0.9  fe:7f:34:xx:xx:xx  privada                    Celular o computadora                           no responde
 
 Usalo solo en tu red o con autorización. En Argentina, acceder sin autorización a un sistema es delito (ley 26.388).
 """

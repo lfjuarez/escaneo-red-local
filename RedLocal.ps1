@@ -119,11 +119,11 @@ function Obtener-DireccionesABarrer($datosRed) {
 }
 
 function Enviar-Pings([string[]]$ips, [int]$veces) {
-    # Manda los pings en paralelo y devuelve, por IP, la mejor respuesta: @{ Responde; Latencia; Ttl }.
+    # Envía los pings en paralelo y devuelve, por IP, la mejor respuesta: @{ Responde; Latencia; Ttl }.
     # - Latencia: cuánto tarda en ir y volver (en una red de casa, pocos milisegundos).
     # - TTL: un número que pone cada sistema en sus paquetes. En la red local llega el valor original:
     #   64 sugiere Linux, Android o Apple; 128, Windows; 255, un equipo de red. Es una pista, no una prueba.
-    # Se mandan dos pings porque el primero muchas veces se pierde mientras el equipo se despierta.
+    # Se envían dos pings porque el primero muchas veces se pierde mientras el equipo se despierta.
     # Un celular bloqueado suele no contestar: «no responde» no significa «no está».
     $tareas = foreach ($ip in $ips) {
         for ($n = 0; $n -lt $veces; $n++) {
@@ -197,9 +197,9 @@ function Obtener-Fabricante([string]$dirMac) {
 # ───────────────────────── relevamiento ─────────────────────────
 # Hace todos los pasos y devuelve la red y la lista de equipos ordenada por IP.
 # Con -Barrido, primero saluda a todas las direcciones de la red: no importa si contestan el ping,
-# para mandarlo Windows tiene que preguntar la MAC, y cada equipo encendido contesta esa pregunta.
+# para enviarlo Windows tiene que preguntar la MAC, y cada equipo encendido contesta esa pregunta.
 # Desde el lado del defensor, un equipo que pregunta por todas las direcciones en pocos segundos
-# es un comportamiento típico de reconocimiento, y muchos sistemas de detección lo marcan.
+# es un comportamiento típico de descubrimiento de la red, y muchos sistemas de detección lo marcan.
 function Relevar-Red([bool]$barrido) {
     $datosRed = Leer-Red
     if ($barrido) { [void](Enviar-Pings (Obtener-DireccionesABarrer $datosRed) 1) }   # deja a los equipos encendidos en la tabla de vecinos
@@ -220,7 +220,7 @@ function Relevar-Red([bool]$barrido) {
     $equipos = foreach ($ip in $ips) {
         $dirMac = $vecinos[$ip]
         $sondeo = $sondeos[$ip]
-        $tipo = if ($ip -eq $datosRed.Router) { 'Router' } elseif (Probar-MacPrivada $dirMac) { 'Celular o compu' } else { '' }
+        $tipo = if ($ip -eq $datosRed.Router) { 'Router' } elseif (Probar-MacPrivada $dirMac) { 'Celular o computadora' } else { '' }
         $sistema = if ($sondeo.Ttl) { if ($SistemaPorTtl[[int]$sondeo.Ttl]) { $SistemaPorTtl[[int]$sondeo.Ttl] } else { "poco común (TTL $($sondeo.Ttl))" } } else { '' }
         [PSCustomObject]@{ IP = $ip; MAC = $dirMac; Nombre = "$($nombres[$ip])"; Tipo = $tipo; Modelo = ''; Sistema = $sistema
                            Responde = $sondeo.Responde; Latencia = $sondeo.Latencia; Clave = $dirMac }
@@ -327,8 +327,8 @@ function Registrar-Equipos($inventario, $equipos) {
             $anterior = [PSCustomObject]@{ Nombre = ''; Tipo = ''; Modelo = ''; Sistema = ''; Servicios = ''; Responsable = ''
                                            'Primera vez' = (Obtener-Ahora); Autorizado = $(if ($e.Tipo -eq 'Esta computadora') { 'sí' } else { 'pendiente' }) }
         }
-        # «Celular o compu» sale solo de la MAC privada: no pisa un tipo mejor que ya se conocía.
-        $tipo = if ((-not $e.Tipo -or $e.Tipo -eq 'Celular o compu') -and $anterior.Tipo) { $anterior.Tipo } else { $e.Tipo }
+        # «Celular o computadora» sale solo de la MAC privada: no pisa un tipo mejor que ya se conocía.
+        $tipo = if ((-not $e.Tipo -or $e.Tipo -eq 'Celular o computadora') -and $anterior.Tipo) { $anterior.Tipo } else { $e.Tipo }
         $inventario[$e.Clave] = [PSCustomObject][ordered]@{
             'MAC'         = $e.MAC
             'IP'          = $e.IP

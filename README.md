@@ -5,11 +5,11 @@ Material de práctica del curso de Ciberseguridad.
 Comandos y programas para ver qué hay conectado a una red y avisar si aparece algo que no corresponde.
 Sirven en cualquier red, porque nada está fijo: todo se descubre en el momento.
 
-- **`escanear-red`** arma la tabla de equipos y la guarda como **inventario de activos**.
+- **`escanear-red`** genera la tabla de equipos y la guarda como **inventario de activos**.
 - **`vigilar-red`** compara la red contra ese inventario y **avisa** lo que no debería estar.
 - **`quien-es`** (Mac y Linux) muestra la ficha de un equipo a partir de su IP.
 
-**Usalos solo en tu red o con autorización.** En Argentina, acceder sin autorización a un sistema es delito (ley 26.388).
+**Usalos solo en tu red o con autorización.** En Argentina, acceder sin autorización a un sistema es delito (ley 26.388). Y escanear una red ajena sin permiso puede violar sus políticas y traer consecuencias legales.
 
 ## Índice
 
@@ -35,8 +35,9 @@ y un televisor Samsung en la `192.168.0.7`. En tu red las IP, las MAC y los nomb
 Lo primero que hace un analista al llegar a una red es saber **qué hay conectado**. No se puede proteger lo que no se sabe que existe:
 es el primer control de los CIS Controls (**inventario de activos**).
 
-Un atacante hace exactamente lo mismo cuando accede a una red, y tiene nombre: **reconocimiento**
-([MITRE ATT&CK T1018](https://attack.mitre.org/techniques/T1018/), que menciona justamente la tabla ARP).
+Un atacante hace exactamente lo mismo cuando accede a una red, y tiene nombre: **descubrimiento**
+(táctica de descubrimiento de MITRE ATT&CK, técnica [T1018](https://attack.mitre.org/techniques/T1018/), que menciona justamente la tabla ARP).
+No hay que confundirlo con el *reconocimiento*, que es lo que hace el atacante antes de acceder, desde afuera.
 La diferencia es el permiso y para qué se usa.
 
 El camino de este repositorio:
@@ -127,7 +128,7 @@ curl https://api.macvendors.com/94-e6-ba
 ```
 
 Los **primeros 3 pares de la MAC** dicen quién fabricó la placa de red. Este comando se los pregunta a un servicio público
-(`curl` viene con Windows 10 y 11).
+(`curl` viene con Windows 10 y 11). Escribilo en el **Símbolo del sistema**: en PowerShell 5.1, `curl` es otro comando y muestra otra cosa.
 
 ```
 Samsung Electronics Co.,Ltd
@@ -143,7 +144,7 @@ Si el **segundo carácter** de la MAC es 2, 6, A o E (como `fe-7f-34`), es una *
 ping -n 2 192.168.0.7
 ```
 
-Le manda 2 saludos al equipo y mide cuánto tarda en contestar.
+Le envía 2 pings al equipo y mide cuánto tarda en contestar.
 
 ```
 Respuesta desde 192.168.0.7: bytes=32 tiempo=5ms TTL=64
@@ -205,7 +206,7 @@ Desde PowerShell, parado en la carpeta descomprimida:
 
 | Paso | Qué hace | Comando |
 |---|---|---|
-| 1 | Escaneo inicial: arma la tabla y la guarda como inventario | `powershell -ExecutionPolicy Bypass -File .\escanear-red.ps1` |
+| 1 | Escaneo inicial: genera la tabla y la guarda como inventario | `powershell -ExecutionPolicy Bypass -File .\escanear-red.ps1` |
 | 1 bis | Lo mismo, pero saludando a todas las direcciones (encuentra más equipos) | `powershell -ExecutionPolicy Bypass -File .\escanear-red.ps1 -Barrido` |
 | 2 | Aprobar todos los equipos del inventario (o editar la columna «Autorizado» en Excel) | `powershell -ExecutionPolicy Bypass -File .\escanear-red.ps1 -Aprobar` |
 | 3 | Vigilar: compara la red con el inventario y avisa | `powershell -ExecutionPolicy Bypass -File .\vigilar-red.ps1` |
@@ -282,6 +283,10 @@ Los **primeros 3 pares de la MAC** dicen quién fabricó la placa de red. Este c
 ```
 Samsung Electronics Co.,Ltd
 ```
+
+**Ojo con los ceros:** macOS muestra las MAC sin los ceros iniciales de cada par (por ejemplo `0:1e:c2` en lugar de `00:1e:c2`).
+Antes de consultar, completá con un 0 cada par de un solo carácter: con `0:1e:c2` el servicio responde «Multicast Address», y con `00:1e:c2`, la marca correcta.
+Por eso en el ejemplo de arriba aparecen `1:0:5e:0:0:fb` y, más abajo, `2a:4:f6`.
 
 También se puede buscar en el navegador, en https://macvendors.com.
 Si el **segundo carácter** de la MAC es 2, 6, A o E (como `fe:7f:34`), es una **MAC privada** y contesta `Locally Administered Address`:
@@ -368,7 +373,7 @@ Desde la Terminal, parado en la carpeta descomprimida:
 
 | Paso | Qué hace | Comando |
 |---|---|---|
-| 1 | Escaneo inicial: arma la tabla y la guarda como inventario | `python3 escanear-red.py` |
+| 1 | Escaneo inicial: genera la tabla y la guarda como inventario | `python3 escanear-red.py` |
 | 1 bis | Lo mismo, pero saludando a todas las direcciones (encuentra más equipos) | `python3 escanear-red.py --barrido` |
 | 2 | Aprobar todos los equipos del inventario (o editar la columna «Autorizado» en Excel o Numbers) | `python3 escanear-red.py --aprobar` |
 | 3 | Vigilar: compara la red con el inventario y avisa | `python3 vigilar-red.py` |
@@ -536,7 +541,7 @@ ESCANEO DE LA RED · 14/11/2026 17:30
 IP            MAC                Fabricante  Nombre          Tipo              Modelo   Sistema                 Latencia     Servicios
 192.168.0.1   a4:2b:b0:xx:xx:xx  TP-Link     router          Router                     Linux, Android o Apple  3 ms
 192.168.0.7   94:e6:ba:xx:xx:xx  Samsung     TV del living   TV o reproductor  QN55     Linux, Android o Apple  5 ms         AirPlay :7000, Chromecast :8009
-192.168.0.9   fe:7f:34:xx:xx:xx  privada                     Celular o compu                                     no responde
+192.168.0.9   fe:7f:34:xx:xx:xx  privada                     Celular o computadora                                     no responde
 192.168.0.12  3c:2a:f4:xx:xx:xx  Brother     Impresora-1     Impresora         HL-L2350 Linux, Android o Apple  12 ms        Impresión :631
 192.168.0.15  32:65:c7:xx:xx:xx  privada     MacBook-de-Ana  Esta computadora  MacBook Air (Mac14,2)  macOS 15.5
 ```
@@ -546,7 +551,7 @@ Y la vigilancia, si alguien conecta un equipo que no está en el inventario:
 ```
 ALERTAS (1)
 IP            MAC                Fabricante  Nombre  Tipo             Motivo
-192.168.0.23  2a:04:f6:xx:xx:xx  privada             Celular o compu  no está en el inventario
+192.168.0.23  2a:04:f6:xx:xx:xx  privada             Celular o computadora  no está en el inventario
 
 Resultado: alertas: 1 · cambios: 0 · en regla: 5 · ausentes: 0 · alertas guardadas en alertas-red.log
 ```
@@ -589,7 +594,7 @@ La respuesta queda anotada un rato en la tabla ARP. Por eso esa tabla solo muest
 
 **Escaneo pasivo y activo.** El pasivo solo mira lo que ya pasó (la tabla ARP) y escucha lo que los equipos anuncian.
 El activo (barrido) saluda a cada dirección de la red, como `nmap -sn`. Encuentra más equipos, pero deja huella:
-en una red ajena, un equipo que pregunta por todas las direcciones en pocos segundos es una señal típica de reconocimiento, y muchos sistemas de detección lo marcan.
+en una red ajena, un equipo que pregunta por todas las direcciones en pocos segundos es una señal típica de descubrimiento de la red, y muchos sistemas de detección lo marcan.
 
 **MAC privada.** Los celulares y muchas computadoras inventan una MAC distinta para cada Wi-Fi, para que no los rastreen.
 Esas MAC tienen encendido un bit especial («administrada localmente»), que se ve en el segundo carácter: 2, 6, A o E. Por eso, de esos equipos no se puede saber el fabricante.
@@ -632,6 +637,7 @@ El programa termina con código 2 si hubo alertas, y con 0 si no, para poder usa
 - Un celular bloqueado no responde al ping y puede no decir su nombre: un solo escaneo no es un inventario completo. En una empresa, el inventario se mantiene de forma continua.
 - El fabricante es el de la **placa de red**, no siempre la marca del aparato (una caja de TV puede traer una placa Wi-Fi de otro fabricante).
 - Desde una computadora no se puede medir el tráfico de los demás equipos: eso lo sabe el router o el firewall.
+- Los celulares cambian de MAC privada cada tanto (por red o por tiempo). Eso puede generar una alerta de «no está en el inventario» sin que haya un equipo nuevo: antes de alarmarse, revisar si es un celular conocido con otra MAC.
 
 ## Créditos
 
