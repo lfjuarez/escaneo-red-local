@@ -7,7 +7,7 @@ Sirven en cualquier red, porque nada está fijo: todo se descubre en el momento.
 
 - **`escanear-red`** genera la tabla de equipos y la guarda como **inventario de activos**.
 - **`vigilar-red`** compara la red contra ese inventario y **avisa** lo que no debería estar.
-- **`quien-es`** (Mac y Linux) muestra la ficha de un equipo a partir de su IP.
+- **`quien-es`** muestra la ficha de un equipo a partir de su IP: marca, modelo, servicios y sistema.
 
 **Usalos solo en tu red o con autorización.** En Argentina, acceder sin autorización a un sistema es delito (ley 26.388). Y escanear una red ajena sin permiso puede violar sus políticas y traer consecuencias legales.
 
@@ -156,8 +156,8 @@ Respuesta desde 192.168.0.7: bytes=32 tiempo=4ms TTL=64
 
 **Conclusión:** la `192.168.0.7` es un equipo Samsung que responde y usa un sistema tipo Linux. Muy probablemente, el televisor.
 
-> Windows no trae una herramienta para leer lo que los equipos anuncian de sí mismos (mDNS), así que no se puede ver el modelo exacto
-> sin instalar nada. En Mac y Linux sí: ver las secciones 4.2 y 5.2.
+> Windows no trae un comando para leer lo que los equipos anuncian de sí mismos (mDNS), así que a mano no se puede ver el modelo exacto.
+> El programa `quien-es.ps1` (sección 3.4) lo hace por su cuenta, sin instalar nada: con él se ve, por ejemplo, «Samsung DU7000» y sus servicios.
 
 ### 3.3 Monitorear a mano
 
@@ -211,11 +211,12 @@ Desde PowerShell, parado en la carpeta descomprimida:
 | 2 | Aprobar todos los equipos del inventario (o editar la columna «Autorizado» en Excel) | `powershell -ExecutionPolicy Bypass -File .\escanear-red.ps1 -Aprobar` |
 | 3 | Vigilar: compara la red con el inventario y avisa | `powershell -ExecutionPolicy Bypass -File .\vigilar-red.ps1` |
 | 4 | Vigilancia continua, una revisión cada 30 segundos (Control + C para cortar) | `powershell -ExecutionPolicy Bypass -File .\vigilar-red.ps1 -Cada 30` |
+| — | La ficha de un equipo puntual, a partir de su IP: marca, modelo, servicios y sistema | `powershell -ExecutionPolicy Bypass -File .\quien-es.ps1 192.168.0.7` |
 
 - `-ExecutionPolicy Bypass` permite correr el archivo **solo esa vez**; no cambia la configuración de Windows.
 - `-MacCompleta` muestra las MAC completas. Por defecto van tapadas, para poder proyectar la pantalla.
 - Funcionan con el PowerShell que trae Windows (5.1) y con PowerShell 7. No hace falta instalar nada.
-- En Windows no aparecen las columnas **Modelo** y **Servicios**, porque salen de los anuncios mDNS (ver la nota del paso 4).
+- En el escaneo de Windows no aparecen las columnas **Modelo** y **Servicios**. Para verlas de un equipo puntual, usá `quien-es.ps1`, que consulta los anuncios mDNS por su cuenta (envía la pregunta a 224.0.0.251, puerto 5353, y lee las respuestas).
 
 ---
 
@@ -556,7 +557,7 @@ IP            MAC                Fabricante  Nombre  Tipo             Motivo
 Resultado: alertas: 1 · cambios: 0 · en regla: 5 · ausentes: 0 · alertas guardadas en alertas-red.log
 ```
 
-`quien-es.py` (Mac y Linux) muestra la ficha de una IP, y al lado de cada dato, el comando del que salió:
+`quien-es` (`quien-es.py` en Mac y Linux, `quien-es.ps1` en Windows) muestra la ficha de una IP, y al lado de cada dato, de dónde salió:
 
 ```
 FICHA DE 192.168.0.7
@@ -625,6 +626,7 @@ El programa termina con código 2 si hubo alertas, y con 0 si no, para poder usa
 |---|---|---|
 | `escanear-red.py`, `vigilar-red.py` | Mac y Linux | Los programas (Python 3.8 o más nuevo) |
 | `quien-es.py` | Mac y Linux | De una IP a la ficha del equipo, con el comando del que sale cada dato |
+| `quien-es.ps1` | Windows | Lo mismo en Windows. Como Windows no trae `dns-sd`, hace la consulta mDNS por su cuenta (está comentada paso a paso) |
 | `red_local.py` | Mac y Linux | El motor que usan los tres: ahí está, comentado paso a paso, cómo se obtiene cada dato |
 | `escanear-red.ps1`, `vigilar-red.ps1` | Windows | Los programas (PowerShell 5.1, el que trae Windows, o 7) |
 | `RedLocal.ps1` | Windows | El motor de la versión de Windows, también comentado |
