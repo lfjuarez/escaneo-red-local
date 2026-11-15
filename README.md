@@ -221,7 +221,7 @@ El puerto abierto delata el tipo de equipo:
 | 554 | Cámara (video) | — |
 
 **Conclusión:** la `192.168.0.7` es un televisor Samsung QN55Q60 con sistema Tizen, y lo dijo el propio equipo.
-Eso mismo ve un atacante que accede al Wi-Fi: por eso se inventaría la red y se separan los equipos inteligentes.
+Eso mismo ve un atacante que accede al Wi-Fi: por eso conviene hacer un inventario de la red y separar los equipos inteligentes en otra red.
 
 > Los pasos 1 a 3 solo miran. Los pasos 4 a 6 le preguntan cosas a los equipos: hacelos **solo en tu red**.
 > Al proyectar, ojo: `arp -a` muestra las MAC completas, y los nombres de los equipos pueden tener nombres de personas.
