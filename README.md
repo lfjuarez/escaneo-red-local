@@ -51,6 +51,22 @@ El camino de este repositorio:
 En esta página, botón verde **Code › Download ZIP**. Descomprimí el archivo y abrí una terminal en esa carpeta
 (cómo se hace en cada sistema está al principio de su sección).
 
+También se puede hacer desde la terminal, en Windows (PowerShell), Mac o Linux:
+
+```powershell
+curl.exe -L -o red.zip https://github.com/lfjuarez/escaneo-red-local/archive/refs/heads/main.zip
+```
+
+```powershell
+tar -xf red.zip
+```
+
+```powershell
+cd escaneo-red-local-main
+```
+
+(En Mac y Linux, el primer comando es `curl` en lugar de `curl.exe`.)
+
 Para los comandos sueltos **no hace falta descargar nada**: vienen con el sistema.
 
 ---
@@ -59,15 +75,22 @@ Para los comandos sueltos **no hace falta descargar nada**: vienen con el sistem
 
 ### 3.1 Abrir la terminal
 
-- **Para los comandos sueltos:** menú de inicio, escribí `cmd` y abrí **Símbolo del sistema**.
-- **Para los programas:** abrí la carpeta descomprimida, hacé clic en la barra de dirección de arriba, escribí `powershell` y presioná Enter.
-  Se abre PowerShell ya parado en esa carpeta.
+Menú de inicio, escribí `powershell` y abrí **Windows PowerShell**. Todos los comandos de esta sección funcionan ahí,
+y también los programas de la sección 3.4. No hace falta instalar nada.
 
 ### 3.2 Explorar la red a mano
 
-**Paso 1 · Cuál es mi IP y cuál es el router**
+| Mac | Windows |
+|---|---|
+| `arp -a` | `arp -a \| findstr /i "din dyn"` |
+| `curl` a macvendors | `curl.exe` a macvendors |
+| `dns-sd -Z` (lo que anuncian los equipos por mDNS) | `UPnP.UPnPDeviceFinder` (lo que anuncian por UPnP) |
+| `ping NOMBRE.local` | `Resolve-DnsName IP` y `ping NOMBRE.local` |
+| — | Preguntarle al equipo por su ficha (`irm` a su puerto de control) |
 
-```bat
+**Paso 1 · Cuál es mi IP y cuál es el router** (solo mira la configuración)
+
+```powershell
 ipconfig | findstr /i "IPv4 puerta gateway"
 ```
 
@@ -82,36 +105,15 @@ ipconfig | findstr /i "IPv4 puerta gateway"
 Tu computadora es la `192.168.0.15` y el router, la `192.168.0.1`.
 Si aparece otra IPv4 con la puerta de enlace vacía, es una placa de red virtual (por ejemplo, de WSL o de una máquina virtual): no le hagas caso.
 
-**Paso 2 · Quién está en mi red**
+**Paso 2 · Quién está en mi red** (solo mira)
 
-```bat
-arp -a
-```
-
-Muestra la **tabla ARP**: los equipos de tu red con los que tu computadora habló hace poco, cada uno con su IP y su MAC.
-
-```
-Interfaz: 192.168.0.15 --- 0xb
-  Dirección de Internet          Dirección física      Tipo
-  192.168.0.1           a4-2b-b0-12-34-56     dinámico
-  192.168.0.7           94-e6-ba-ab-cd-ef     dinámico
-  192.168.0.9           fe-7f-34-11-22-33     dinámico
-  192.168.0.255         ff-ff-ff-ff-ff-ff     estático
-  224.0.0.22            01-00-5e-00-00-16     estático
-  239.255.255.250       01-00-5e-7f-ff-fa     estático
-```
-
-Los renglones **dinámicos** son equipos reales. Los **estáticos** no son equipos: son direcciones especiales que la red usa
-para avisos generales (la que termina en 255 y las que empiezan con 224 o 239).
-Si tenés varias placas de red (por ejemplo, Wi-Fi y una virtual), aparece un bloque «Interfaz» por cada una.
-
-**Para ver solo los equipos reales:**
-
-```bat
+```powershell
 arp -a | findstr /i "din dyn"
 ```
 
-`findstr` deja solo los renglones que dicen «dinámico» (Windows en español) o «dynamic» (Windows en inglés).
+`arp -a` muestra la **tabla ARP**: los equipos de tu red con los que tu computadora habló hace poco, cada uno con su IP y su MAC.
+`findstr` deja solo los **dinámicos**, que son equipos reales («dinámico» en Windows en español, «dynamic» en inglés).
+Los **estáticos** que se ven con `arp -a` solo no son equipos: son direcciones especiales de la red (la que termina en 255 y las que empiezan con 224 o 239).
 
 ```
   192.168.0.1           a4-2b-b0-12-34-56     dinámico
@@ -121,43 +123,103 @@ arp -a | findstr /i "din dyn"
 
 Elegimos uno para investigar: la `192.168.0.7`, con MAC `94-e6-ba-ab-cd-ef`.
 
-**Paso 3 · De qué marca es**
+**Paso 3 · De qué marca es** (consulta a un servicio de internet)
 
-```bat
-curl https://api.macvendors.com/94-e6-ba
+```powershell
+curl.exe https://api.macvendors.com/94-e6-ba
 ```
 
-Los **primeros 3 pares de la MAC** dicen quién fabricó la placa de red. Este comando se los pregunta a un servicio público
-(`curl` viene con Windows 10 y 11). Escribilo en el **Símbolo del sistema**. En PowerShell hay que escribir `curl.exe`, porque `curl` a secas es otro comando.
+Los **primeros 3 pares de la MAC** dicen quién fabricó la placa de red, y este comando se los pregunta a un servicio público.
+En PowerShell hay que escribir `curl.exe`: `curl` a secas es otro comando.
 
 ```
 Samsung Electronics Co.,Ltd
 ```
 
 También se puede pegar `94-e6-ba` en el navegador, en https://macvendors.com.
-Si el **segundo carácter** de la MAC es 2, 6, A o E (como `fe-7f-34`), es una **MAC privada**: el equipo la inventó para no ser rastreado
-(lo hacen casi todos los celulares) y no se puede saber la marca.
+Si el **segundo carácter** de la MAC es 2, 6, A o E (como `fe-7f-34`), contesta `Locally Administered Address`: es una **MAC privada**,
+que el equipo inventa para que no lo rastreen (lo hacen casi todos los celulares), y no se puede saber la marca.
 
-**Paso 4 · Si responde y qué sistema podría tener**
+**Paso 4 · Qué anuncian los equipos de sí mismos** (envía una pregunta a toda la red, unos 10 segundos)
 
-```bat
-ping -n 2 192.168.0.7
+```powershell
+(New-Object -ComObject UPnP.UPnPDeviceFinder).FindByType('upnp:rootdevice',0) | ft FriendlyName,ManufacturerName,ModelName
 ```
 
-Le envía 2 pings al equipo y mide cuánto tarda en contestar.
+Windows pregunta a toda la red «¿quién está ahí?» (protocolo UPnP/SSDP) y cada equipo que se anuncia contesta con su ficha:
+nombre, fabricante y modelo. Lo hacen televisores, decodificadores, routers, impresoras y consolas.
 
 ```
+FriendlyName   ManufacturerName    ModelName
+------------   ----------------    ---------
+TV del living  Samsung Electronics QN55Q60
+Router         TP-Link             Archer C6
+```
+
+La marca Samsung coincide con la del paso 3: la `192.168.0.7` es ese televisor, modelo `QN55Q60`.
+Este comando no muestra la IP de cada equipo: se cruza con la marca que dio macvendors.
+
+**Paso 5 · Su nombre en la red, y confirmar la IP**
+
+```powershell
+Resolve-DnsName 192.168.0.7
+```
+
+```
+Name                       Type   TTL   Section    NameHost
+----                       ----   ---   -------    --------
+7.0.168.192.in-addr.arpa   PTR    120   Answer     Samsung.local
+```
+
+Y para confirmar que ese nombre es de esa IP, igual que en Mac:
+
+```powershell
+ping -n 2 Samsung.local
+```
+
+```
+Haciendo ping a Samsung.local [192.168.0.7] con 32 bytes de datos:
 Respuesta desde 192.168.0.7: bytes=32 tiempo=5ms TTL=64
-Respuesta desde 192.168.0.7: bytes=32 tiempo=4ms TTL=64
 ```
 
-`tiempo=5ms` es la latencia. `TTL=64` es una pista del sistema: 64 suele ser Linux, Android o Apple (un televisor Samsung usa Linux);
-128, Windows; 255, equipos de red. Es una pista, no una prueba.
+`TTL=64` es una pista del sistema: 64 suele ser Linux, Android o Apple (un televisor Samsung usa Linux); 128, Windows; 255, equipos de red.
+Si `Resolve-DnsName` dice «El nombre DNS no existe», el equipo no anuncia nombre (pasa con celulares y equipos inteligentes): no es un error.
 
-**Conclusión:** la `192.168.0.7` es un equipo Samsung que responde y usa un sistema tipo Linux. Muy probablemente, el televisor.
+**Paso 6 · Preguntarle al equipo qué es** (prueba un puerto y lee su ficha)
 
-> Windows no trae un comando para leer lo que los equipos anuncian de sí mismos (mDNS), así que a mano no se puede ver el modelo exacto.
-> El programa `quien-es.ps1` (sección 3.4) lo hace por su cuenta, sin instalar nada: con él se ve, por ejemplo, «Samsung DU7000» y sus servicios.
+```powershell
+Test-NetConnection 192.168.0.7 -Port 8001
+```
+
+Si dice `TcpTestSucceeded : True`, el puerto está abierto. El 8001 es la interfaz de control de los televisores Samsung, y se le puede pedir la ficha:
+
+```powershell
+(irm http://192.168.0.7:8001/api/v2/).device | fl name,modelName,type,OS
+```
+
+```
+name      : TV del living
+modelName : QN55Q60
+type      : Samsung SmartTV
+OS        : Tizen
+```
+
+El puerto abierto delata el tipo de equipo:
+
+| Puerto abierto | Qué suele ser | Cómo leer su ficha |
+|---|---|---|
+| 8001 | Televisor Samsung | `(irm http://IP:8001/api/v2/).device \| fl name,modelName,type,OS` |
+| 8008 y 8009 | Chromecast, Google TV, Android TV o decodificador | `irm http://IP:8008/setup/eureka_info \| fl name,ip_address` |
+| 7000 | AirPlay (Apple TV, Mac o televisor compatible) | `curl.exe -s -I http://IP:7000/info` → `Server: AirTunes/…` |
+| 80 | Router, cámara o impresora (página de administración) | `curl.exe -s -I http://IP` |
+| 631 o 9100 | Impresora | — |
+| 554 | Cámara (video) | — |
+
+**Conclusión:** la `192.168.0.7` es un televisor Samsung QN55Q60 con sistema Tizen, y lo dijo el propio equipo.
+Eso mismo ve un atacante que accede al Wi-Fi: por eso se inventaría la red y se separan los equipos inteligentes.
+
+> Los pasos 1 a 3 solo miran. Los pasos 4 a 6 le preguntan cosas a los equipos: hacelos **solo en tu red**.
+> Al proyectar, ojo: `arp -a` muestra las MAC completas, y los nombres de los equipos pueden tener nombres de personas.
 
 ### 3.3 Monitorear a mano
 
@@ -165,34 +227,31 @@ La idea de monitorear es simple: anotar qué hay hoy y comparar con lo que hay d
 
 **Guardar una foto de la red:**
 
-```bat
+```powershell
 arp -a | findstr /i "din dyn" > antes.txt
 ```
 
 **Más tarde, otra foto:**
 
-```bat
+```powershell
 arp -a | findstr /i "din dyn" > ahora.txt
 ```
 
 **Compararlas:**
 
-```bat
-fc antes.txt ahora.txt
+```powershell
+Compare-Object (Get-Content antes.txt) (Get-Content ahora.txt)
 ```
 
-`fc` muestra lo que cambió entre los dos archivos. Si dice «FC: no se encontraron diferencias», la red está igual.
-Si apareció un equipo, su renglón aparece debajo de `AHORA.TXT`:
+Si no muestra nada, la red está igual. Un renglón con `=>` es un equipo que **apareció**; con `<=`, uno que **ya no está**:
 
 ```
-Comparando archivos antes.txt y AHORA.TXT
-***** antes.txt
-***** AHORA.TXT
-  192.168.0.23          2a-04-f6-aa-bb-cc     dinámico
-*****
+InputObject                                              SideIndicator
+-----------                                              -------------
+  192.168.0.23          2a-04-f6-aa-bb-cc     dinámico   =>
 ```
 
-**Mirar la red cada 30 segundos** (en PowerShell; se corta con Control + C):
+**Mirar la red cada 30 segundos** (se corta con Control + C):
 
 ```powershell
 while ($true) { Get-Date; arp -a | findstr /i "din dyn"; Start-Sleep 30 }
@@ -581,12 +640,12 @@ Ese equipo va a aparecer como «no está en el inventario».
 | **IP** | La dirección del equipo en tu red | La tabla ARP | `arp -a` | `arp -a` | `ip neigh` |
 | **MAC** | El identificador de su placa de red | La tabla ARP | `arp -a` | `arp -a` | `ip neigh` |
 | **Fabricante** | Quién fabricó la placa de red | Los 3 primeros pares de la MAC, en la base de la IEEE | `curl https://api.macvendors.com/94-e6-ba` | `curl https://api.macvendors.com/94:e6:ba` | igual que Mac |
-| **Nombre** | Cómo se llama el equipo | Lo que anuncia, o la consulta inversa de nombre | `nslookup IP` | `dig +short -x IP @224.0.0.251 -p 5353` | `avahi-resolve-address IP` |
+| **Nombre** | Cómo se llama el equipo | Lo que anuncia, o la consulta inversa de nombre | `Resolve-DnsName IP` | `dig +short -x IP @224.0.0.251 -p 5353` | `avahi-resolve-address IP` |
 | **Tipo** | Qué clase de equipo es | Se deduce de lo que anuncia y de su modelo | — | — | — |
-| **Modelo** | Marca y modelo que el equipo dice tener | Su ficha de servicios (mDNS) | — | `dns-sd -Z _airplay._tcp local.` | `avahi-browse -art` |
+| **Modelo** | Marca y modelo que el equipo dice tener | Su ficha de servicios (mDNS o UPnP) | `UPnP.UPnPDeviceFinder` (paso 4) o `quien-es.ps1` | `dns-sd -Z _airplay._tcp local.` | `avahi-browse -art` |
 | **Sistema** | Una estimación del sistema operativo | El TTL de la respuesta al ping | `ping -n 2 IP` | `ping -c 2 IP` | `ping -c 2 IP` |
 | **Latencia** | Cuánto tarda en responder | El tiempo de respuesta al ping | `ping -n 2 IP` | `ping -c 2 IP` | `ping -c 2 IP` |
-| **Servicios** | Qué ofrece el equipo a la red, con su puerto | Los anuncios mDNS/DNS-SD | — | `dns-sd -B _services._dns-sd._udp local.` | `avahi-browse -art` |
+| **Servicios** | Qué ofrece el equipo a la red, con su puerto | Los anuncios mDNS/DNS-SD | `quien-es.ps1`, o `Test-NetConnection IP -Port N` | `dns-sd -B _services._dns-sd._udp local.` | `avahi-browse -art` |
 
 ## 8. Conceptos
 
